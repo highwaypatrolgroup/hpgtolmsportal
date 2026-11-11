@@ -1866,36 +1866,73 @@ function vrReview(id){const d=load(),v=d.vehicles.find(x=>x.id===id);if(!v)retur
   A.engine=A.engine||vrUniq(x,"engine",()=>rA(VCH,2)+rA(VCD,1)+"-"+rA(VCD,7));
   const mo=Math.min(120,Math.max(1,Math.round(+$("#vmo",m).value)||VEH_MONTHS));A.status="Approved";A.note="";A.renewReq=false;A.renewNote="";A.regDate=today();A.expiry=addM(A.regDate,mo);A.by=(sess()||{}).email||"";
   try{save(x)}catch{return toast("Storage is full.")}m.remove();toast("Registered · certificate issued");admin()}}
-/* ===== MEDICAL CERTIFICATE (requests go to the Medical Reserve Force terminal) ===== */
+/* ===== MEDICAL CERTIFICATE (Request / Renew, each with live chat to the Medical Reserve Force) ===== */
 const MRF_CFG={apiKey:"AIzaSyAHfGXq5xMEfkgoSi9C3PRoxayLYc7bIaY",authDomain:"mrf-system-22299.firebaseapp.com",projectId:"mrf-system-22299",appId:"1:669835853910:web:8728962e32e96de79f7bf7"};
-let _mrf=null,medUn=[],medS={};
+let _mrf=null,medUn=[],medCu=null,medS={},medv="menu",medOpen=null,medTok=0,medCache={};
 const mrfDb=()=>{if(!_mrf){let a;try{a=firebase.app("mrf")}catch{a=firebase.initializeApp(MRF_CFG,"mrf")}_mrf=a.firestore()}return _mrf};
-const medStop=()=>{medUn.forEach(f=>{try{f()}catch{}});medUn=[]};
+const medStop=()=>{medTok++;medUn.forEach(f=>{try{f()}catch{}});medUn=[];if(medCu){try{medCu()}catch{}medCu=null}};
 const medGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch{return d}},medSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+const uidOf=()=>{try{return AUTH.currentUser.uid}catch{return null}};
+/* Ticket list is kept per portal account (not per device): MRF "idx/<account uid>" + a local copy */
+async function medLoad(email){if(medCache[email])return medCache[email];
+ const key="mrfTk:"+email,loc=medGet(key,[]),u=uidOf();let rem=[];
+ if(u){try{const d=await mrfDb().doc("idx/"+u).get();if(d.exists)rem=d.data().t||[]}catch{}}
+ const m=new Map();[...rem,...loc].forEach(x=>{if(x&&x.id&&!m.has(x.id))m.set(x.id,x)});
+ const all=[...m.values()].sort((a,b)=>b.t-a.t).slice(0,40);medCache[email]=all;medSet(key,all);
+ if(u&&all.length!==rem.length)mrfDb().doc("idx/"+u).set({t:all,updatedAt:Date.now()}).catch(()=>{});
+ return all}
+function medSave(email,all){medCache[email]=all;medSet("mrfTk:"+email,all);const u=uidOf();if(u)mrfDb().doc("idx/"+u).set({t:all,updatedAt:Date.now()}).catch(()=>{})}
+const dataBlob=u=>{const p=u.split(","),m=/:(.*?);/.exec(p[0])[1],s=atob(p[1]),a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return new Blob([a],{type:m})};
 const MRANKS=["Police Patrolman","Police Corporal","Police Staff Sergeant","Police Master Sergeant","Police Senior Master Sergeant","Police Chief Master Sergeant","Police Executive Master Sergeant","Police Lieutenant","Police Captain","Police Major","Police Lieutenant Colonel","Police Colonel","Police Brigadier General","Police Major General","Police Lieutenant General","Police General"];
-function medHTML(r,email){const pf=medGet("mrfPf:"+email,{});
- return`<div class="pcard"><h3 style="margin:0 0 6px">Request a medical certificate</h3><p class="note" style="margin:0 0 14px">Your request goes to the Medical Reserve Force. A medical examiner picks it up and the status shows below.</p>
+const MT=[["req","REQUEST MEDICAL CERTIFICATE","Get a new medical clearance"],["ren","RENEW MEDICAL CERTIFICATE","Renew an expiring or expired certificate"]];
+function medHTML(r,email){
+ if(medv==="menu")return'<p class="psub" style="margin:0 0 14px;text-align:center">What do you need?</p>'+MT.map((m,i)=>`<button class="pfeat" data-mv="${m[0]}" style="margin-top:${i?12:0}px"><span class="pico">${ico("med",44,2.2)}</span><span class="tx"><b>${m[1]}</b><small>${m[2]} · with live chat</small></span><span class="chev">${ico("chev",22,4)}</span></button>`).join("");
+ const ren=medv==="ren",pf=medGet("mrfPf:"+email,{});
+ return`<button class="btn ghost full" data-mv="menu" style="margin-bottom:14px">‹ Medical certificate</button><div class="pcard"><h3 style="margin:0 0 6px">${ren?"Renew medical certificate":"Request medical certificate"}</h3><p class="note" style="margin:0 0 14px">Your request goes to the Medical Reserve Force. A medical examiner picks it up. You can chat with them below and ask medical questions.</p>
  ${fld("m_n","Roblox username","text",'maxlength="60" value="'+esc((r&&r.name)||"")+'"')}
  <div class="fld"><input id="m_r" list="m_rl" placeholder=" " maxlength="60" value="${esc(pf.rk||"")}"><label for="m_r">TPNP rank</label></div><datalist id="m_rl">${MRANKS.map(x=>`<option value="${x}">`).join("")}</datalist>
  ${fld("m_u","Unit / office","text",'maxlength="80" value="'+esc(pf.u||"")+'"')}
  ${fld("m_f","Issued for","text",'maxlength="80" value="TPNP | TRANSPORTATION OFFICE"')}
- <button class="btn full" id="m_go">Send request</button></div><div id="medList"></div>`}
-function bindMed(email,r){medStop();const key="mrfTk:"+email,L=medGet(key,[]).slice(0,10);
+ ${ren?fld("m_p","Previous certificate date (optional)","text",'maxlength="40"'):""}
+ <button class="btn full" id="m_go">${ren?"Send renewal request":"Send request"}</button></div><div id="medList"></div><div id="medChat"></div>`}
+async function bindMed(email,r){medStop();const tok=medTok;
+ $$("[data-mv]").forEach(b=>b.onclick=()=>{medv=b.dataset.mv;medOpen=null;portal(email);window.scrollTo(0,0)});
+ if(medv==="menu")return;
+ const ALL=await medLoad(email);if(tok!==medTok)return;
+ const ty=medv==="ren"?"renewal":"new",L=ALL.filter(t=>(t.ty||"new")===ty).slice(0,10),nm=(r&&r.name)||email.split("@")[0];
+ const closed=id=>{const s=medS[id];return !!s&&(s.status==="issued"||s.status==="declined")};
  const LAB={pending:["Pending","Waiting for a medical examiner"],open:["Pending","Waiting for a medical examiner"],progress:["Pending","In progress"],issued:["Active","Issued"],declined:["Expired","Declined"]};
  const draw=()=>{const el=$("#medList");if(!el)return;
   el.innerHTML=L.length?'<div class="cardh"><h3>My requests</h3></div>'+L.map(t=>{const s=medS[t.id]||{},k=s.gone?"declined":(s.status||"pending"),b=LAB[k]||LAB.pending;
    return`<div class="pcard" style="margin-bottom:12px"><div class="prow2"><div><small>${s.ticketNo?"TICKET #"+String(s.ticketNo).padStart(3,"0")+" · ":""}${esc(new Date(t.t).toLocaleDateString())}</small><div class="num" style="font-size:1rem">${esc(s.issuedFor||"Medical certificate")}</div></div><span class="pill ${b[0]}">${s.gone?"Not found":b[1]}</span></div>
    ${k==="progress"&&s.handlerName?`<p class="note" style="margin:10px 0 0">Being handled by <b>${esc(s.handlerName)}</b></p>`:""}
-   ${k==="issued"?'<p class="note" style="margin:10px 0 0">Your medical certificate has been issued. The Medical Reserve Force will give you your copy.</p>':""}
-   ${k==="declined"&&s.declineReason?`<p class="note" style="margin:10px 0 0"><b>Reason:</b> ${esc(s.declineReason)}</p>`:""}</div>`}).join(""):""};
- L.forEach(t=>medUn.push(mrfDb().doc("requests/"+t.id).onSnapshot(d=>{medS[t.id]=d.exists?d.data():{gone:1};draw()},()=>{})));draw();
- $("#m_go").onclick=async()=>{const n=$("#m_n").value.trim(),rk=$("#m_r").value.trim(),u=$("#m_u").value.trim(),f=$("#m_f").value.trim();
+   ${k==="issued"?'<p class="note" style="margin:10px 0 0">Your medical certificate is ready. Find it in the Documents section.</p><button class="btn sm" data-gd="1" style="margin-top:10px">Open Documents</button>':""}
+   ${k==="declined"&&s.declineReason?`<p class="note" style="margin:10px 0 0"><b>Reason:</b> ${esc(s.declineReason)}</p>`:""}
+   <button class="btn ghost sm" data-mc="${t.id}" style="margin:10px 0 0 ${k==="issued"?"8px":"0"}">${medOpen===t.id?"Chat open":"Open chat"}</button></div>`}).join(""):"";
+  $$("[data-mc]").forEach(b=>b.onclick=()=>openChat(b.dataset.mc));
+  $$("[data-gd]").forEach(b=>b.onclick=()=>{pview="doc";portal(email);window.scrollTo(0,0)});
+  const i=$("#cin");if(i&&medOpen)i.disabled=closed(medOpen);const n=$("#chn"),s=medS[medOpen]||{};if(n&&s.ticketNo)n.textContent="Ticket #"+String(s.ticketNo).padStart(3,"0")};
+ const openChat=id=>{medOpen=id;if(medCu){try{medCu()}catch{}medCu=null}
+  $("#medChat").innerHTML=`<div class="pcard"><div class="cardh"><h3>Live chat</h3><span class="note" style="margin:0" id="chn">Your ticket</span></div><div id="cm2" style="max-height:300px;overflow:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div><div class="tools" style="margin:0;flex-wrap:nowrap"><div class="fld" style="flex:1;margin:0;min-width:0"><input id="cin" placeholder=" " maxlength="1000" autocomplete="off"><label for="cin">Type a message</label></div><button class="btn" id="csend" style="flex:none">Send</button></div></div>`;
+  medCu=mrfDb().collection("requests/"+id+"/messages").orderBy("createdAt").limit(200).onSnapshot(q=>{const bx=$("#cm2");if(!bx)return;
+   bx.innerHTML=q.docs.map(d=>{const m=d.data(),mine=m.from==="requester";return`<div style="${m.sys?"align-self:center;font-style:italic;background:#ffffff10":mine?"align-self:flex-end;background:#e0b04b;color:#1b1405":"align-self:flex-start;background:#ffffff14;border:1px solid #ffffff22"};max-width:84%;padding:8px 12px;border-radius:12px;font-size:.88rem;line-height:1.4;word-break:break-word"><small style="display:block;opacity:.7;font-size:.68rem;margin-bottom:2px">${esc(m.name||"")}</small>${esc(m.text)}</div>`}).join("")||'<p class="note" style="text-align:center">No messages yet. Ask the medical examiner your questions here.</p>';bx.scrollTop=bx.scrollHeight},()=>{});
+  $("#csend").onclick=async()=>{const i=$("#cin"),t=i.value.trim();if(!t)return;if(closed(id))return toast("This ticket is closed");i.value="";
+   try{await mrfDb().collection("requests/"+id+"/messages").add({from:"requester",name:nm,text:t,createdAt:firebase.firestore.FieldValue.serverTimestamp()})}catch{i.value=t;toast("Message not sent")}};
+  $("#cin").onkeydown=e=>{if(e.key==="Enter")$("#csend").click()};draw()};
+ L.forEach(t=>medUn.push(mrfDb().doc("requests/"+t.id).onSnapshot(d=>{medS[t.id]=d.exists?d.data():{gone:1};draw()},()=>{})));
+ draw();if(L.length)openChat(medOpen&&L.some(t=>t.id===medOpen)?medOpen:L[0].id);
+ $("#m_go").onclick=async()=>{const n=$("#m_n").value.trim(),rk=$("#m_r").value.trim(),u=$("#m_u").value.trim(),f=$("#m_f").value.trim(),pv=($("#m_p")||{value:""}).value.trim();
   if(!n||!rk||!u||!f)return toast("Fill in every field");
   if(L.some(t=>{const s=medS[t.id];return s&&!s.gone&&s.status!=="issued"&&s.status!=="declined"}))return toast("You already have a request in progress");
-  const b=$("#m_go");b.disabled=true;
-  try{const ref=await mrfDb().collection("requests").add({name:n,rank:rk,unit:u,issuedFor:f,email:email,source:"T.O LMS Portal",status:"pending",createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-   L.unshift({id:ref.id,t:Date.now()});medSet(key,L);medSet("mrfPf:"+email,{rk,u});toast("Request sent to the Medical Reserve Force");portal(email)}
+  const b=$("#m_go");b.disabled=true;const d={name:n,rank:rk,unit:u,issuedFor:f,email:email,source:"T.O LMS Portal",status:"pending",type:ty,createdAt:firebase.firestore.FieldValue.serverTimestamp()};if(pv)d.note="Previous certificate: "+pv;
+  try{const ref=await mrfDb().collection("requests").add(d);ALL.unshift({id:ref.id,t:Date.now(),ty});medSave(email,ALL.slice(0,40));medSet("mrfPf:"+email,{rk,u});medOpen=ref.id;toast("Request sent to the Medical Reserve Force");portal(email)}
   catch{b.disabled=false;toast("Could not send the request. Try again.")}}}
+/* Documents section: issued medical certificates */
+async function bindMedDocs(email){medStop();const tok=medTok,el=$("#medDocs");if(!el)return;el.innerHTML='<p class="note">Loading...</p>';const L=(await medLoad(email)).slice(0,20);if(tok!==medTok)return;const F={};
+ const draw=()=>{const ids=L.filter(t=>F[t.id]);
+  el.innerHTML='<div class="cardh"><h3>Medical certificates</h3></div>'+(ids.length?ids.map(t=>{const f=F[t.id];return`<div class="pcard" style="margin-bottom:12px"><div class="prow2"><div><small>${esc(f.date||"")} · valid ${esc(f.valid||"")}</small><div class="num" style="font-size:1rem">${esc(f.issuedFor||"Medical certificate")}</div></div><button class="btn sm" data-md="${t.id}">Download</button></div><img src="${f.img}" alt="" style="width:100%;border-radius:12px;margin-top:10px"></div>`}).join(""):'<p class="note">No medical certificate yet. It appears here once the Medical Reserve Force approves your request.</p>');
+  $$("[data-md]",el).forEach(b=>b.onclick=()=>{try{const f=F[b.dataset.md],a=document.createElement("a");a.href=URL.createObjectURL(dataBlob(f.img));a.download="Medical-Certificate-"+(f.name||"MRF").replace(/\W+/g,"-")+".jpg";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}catch{toast("Download is not supported in this viewer")}})};
+ draw();L.forEach(t=>medUn.push(mrfDb().doc("certfiles/"+t.id).onSnapshot(d=>{if(d.exists)F[t.id]=d.data();else delete F[t.id];draw()},()=>{})))}
 function portal(email){medStop();
  const r=load().records.find(x=>x.email===email),tot=r?dem(r):0,st=standing(tot),nm=((r&&r.name)||email.split("@")[0]);
  const TT={sup:"Support",id:"Digital ID",lic:"Licensing",vio:"Violations",doc:"Documents",pro:"Profile",ren:"Renewal",reg:"Registration",med:"Medical certificate"};
@@ -1922,6 +1959,7 @@ function portal(email){medStop();
    if(pview==="pro")c=`<div class="pav">${r.photo?`<img src="${r.photo}" alt="">`:esc(ini(r.name))}</div><div class="pcard"><div class="grid">${[["Roblox username",r.name],["Discord",r.discord],["Gmail",r.email],["Age",r.age],["Sex",r.sex],["Nationality",r.nat],[stu?"Permit no.":"License no.",r.licenseNo],["Type",r.type]].map(x=>`<div class="kv"><small>${x[0]}</small>${esc(x[1])||"—"}</div>`).join("")}</div></div><button class="btn ghost full" id="out2">Log out</button>`}
   if(pview==="reg")c=regHTML(r,email);
   if(pview==="med")c=medHTML(r,email);
+  if(pview==="doc")c=(r?c:"")+'<div id="medDocs"></div>';
   if(pview==="lic"){const h=licHTML(r,email);c=lform?h:h+(r?c:"")}
   if(pview==="sup")c=supHTML(email);
   body=`<div class="phd"><button class="pback" data-go="${pview==="ren"?"lic":"home"}">‹ Back</button><h2>${TT[pview].toUpperCase()}</h2></div>${c}`}
@@ -1931,13 +1969,14 @@ function portal(email){medStop();
  <div class="pmain"><div class="ppanel">${body}<div class="pmid"><img src="${LOGO}" alt=""><div><b>TRANSPORTATION OFFICE</b><span>LICENSING MANAGEMENT SYSTEM</span></div></div></div></div>
  <footer class="pbar"><a class="fpl" role="button" tabindex="0" data-legal="privacy">Privacy</a> · <a class="fpl" role="button" tabindex="0" data-legal="terms">Terms</a> · RELEASE 1.0 · BY <b>FRANXZZZZ</b></footer></div>`);
  bindOut();bindFlip(document);if(pview==="sup")bindSup(email);
- $$("[data-go]").forEach(b=>b.onclick=()=>{if(pview==="ren"&&rstep==="quiz"&&!confirm("Leave the test? Your progress will be lost."))return;if(pview==="ren"){rstep="docs";qz=null}if(b.dataset.go!=="lic")lform=null;if(b.dataset.go!=="reg"){rf=null;rsel=null}pview=b.dataset.go;portal(email);window.scrollTo(0,0)});
+ $$("[data-go]").forEach(b=>b.onclick=()=>{if(pview==="ren"&&rstep==="quiz"&&!confirm("Leave the test? Your progress will be lost."))return;if(pview==="ren"){rstep="docs";qz=null}if(b.dataset.go!=="lic")lform=null;if(b.dataset.go==="med"&&pview!=="med")medv="menu";if(b.dataset.go!=="reg"){rf=null;rsel=null}pview=b.dataset.go;portal(email);window.scrollTo(0,0)});
  const li=$("#linfo");if(li)li.onclick=()=>{const o=$("#lbody").classList.toggle("open");li.setAttribute("aria-expanded",o)};
  const pr=$("#prenew");if(pr)pr.onclick=()=>{pview="ren";rstep="docs";rdocs={med:null,lic:null,r2fa:null,d2fa:null};qz=null;portal(email);window.scrollTo(0,0)};
  if(pview==="ren"&&r)bindRen(email);
  if(pview==="lic")bindLic(email,r);
  if(pview==="reg")bindReg(email,r);
  if(pview==="med")bindMed(email,r);
+ if(pview==="doc")bindMedDocs(email);
  if(r){const d1=$("#pdl");if(d1)d1.onclick=()=>dlLicense(r);const d2=$("#prec");if(d2)d2.onclick=()=>dlRecord(r)}
  const o2=$("#out2");if(o2)o2.onclick=()=>$("#out").click()}
 document.body.classList.add("splashing");
