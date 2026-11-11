@@ -1894,15 +1894,17 @@ function medHTML(r,email){
  ${fld("m_u","Unit / office","text",'maxlength="80" value="'+esc(pf.u||"")+'"')}
  ${fld("m_f","Issued for","text",'maxlength="80" value="TPNP | TRANSPORTATION OFFICE"')}
  ${ren?fld("m_p","Previous certificate date (optional)","text",'maxlength="40"'):""}
- <button class="btn full" id="m_go">${ren?"Send renewal request":"Send request"}</button></div><div id="medList"></div><div id="medChat"></div>`}
+ <button class="btn full" id="m_go">${ren?"Send renewal request":"Send request"}</button><p class="note" id="m_nt" style="margin:8px 0 0;text-align:center"></p></div><div id="medList"></div><div id="medChat"></div>`}
 async function bindMed(email,r){medStop();const tok=medTok;
  $$("[data-mv]").forEach(b=>b.onclick=()=>{medv=b.dataset.mv;medOpen=null;portal(email);window.scrollTo(0,0)});
  if(medv==="menu")return;
  const ALL=await medLoad(email);if(tok!==medTok)return;
  const ty=medv==="ren"?"renewal":"new",L=ALL.filter(t=>(t.ty||"new")===ty).slice(0,10),nm=(r&&r.name)||email.split("@")[0];
+ const isOpen=t=>{const s=medS[t.id];return !!s&&!s.gone&&s.status!=="issued"&&s.status!=="declined"};
  const closed=id=>{const s=medS[id];return !!s&&(s.status==="issued"||s.status==="declined")};
  const LAB={pending:["Pending","Waiting for a medical examiner"],open:["Pending","Waiting for a medical examiner"],progress:["Pending","In progress"],issued:["Active","Issued"],declined:["Expired","Declined"]};
  const draw=()=>{const el=$("#medList");if(!el)return;
+  {const blk=ALL.slice(0,10).find(isOpen),g=$("#m_go"),nt=$("#m_nt");if(g&&nt){g.disabled=!!blk;nt.textContent=blk?((blk.ty||"new")===ty?"You already have an open request. Wait until it is closed.":"You already have an open "+((blk.ty||"new")==="renewal"?"renewal":"new certificate")+" request. Finish it before opening another one."):""}}
   el.innerHTML=L.length?'<div class="cardh"><h3>My requests</h3></div>'+L.map(t=>{const s=medS[t.id]||{},k=s.gone?"declined":(s.status||"pending"),b=LAB[k]||LAB.pending;
    return`<div class="pcard" style="margin-bottom:12px"><div class="prow2"><div><small>${s.ticketNo?"TICKET #"+String(s.ticketNo).padStart(3,"0")+" · ":""}${esc(new Date(t.t).toLocaleDateString())}</small><div class="num" style="font-size:1rem">${esc(s.issuedFor||"Medical certificate")}</div></div><span class="pill ${b[0]}">${s.gone?"Not found":b[1]}</span></div>
    ${k==="progress"&&s.handlerName?`<p class="note" style="margin:10px 0 0">Being handled by <b>${esc(s.handlerName)}</b></p>`:""}
@@ -1919,18 +1921,18 @@ async function bindMed(email,r){medStop();const tok=medTok;
   $("#csend").onclick=async()=>{const i=$("#cin"),t=i.value.trim();if(!t)return;if(closed(id))return toast("This ticket is closed");i.value="";
    try{await mrfDb().collection("requests/"+id+"/messages").add({from:"requester",name:nm,text:t,createdAt:firebase.firestore.FieldValue.serverTimestamp()})}catch{i.value=t;toast("Message not sent")}};
   $("#cin").onkeydown=e=>{if(e.key==="Enter")$("#csend").click()};draw()};
- L.forEach(t=>medUn.push(mrfDb().doc("requests/"+t.id).onSnapshot(d=>{medS[t.id]=d.exists?d.data():{gone:1};draw()},()=>{})));
+ ALL.slice(0,10).forEach(t=>medUn.push(mrfDb().doc("requests/"+t.id).onSnapshot(d=>{medS[t.id]=d.exists?d.data():{gone:1};draw()},()=>{})));
  draw();if(L.length)openChat(medOpen&&L.some(t=>t.id===medOpen)?medOpen:L[0].id);
  $("#m_go").onclick=async()=>{const n=$("#m_n").value.trim(),rk=$("#m_r").value.trim(),u=$("#m_u").value.trim(),f=$("#m_f").value.trim(),pv=($("#m_p")||{value:""}).value.trim();
   if(!n||!rk||!u||!f)return toast("Fill in every field");
-  if(L.some(t=>{const s=medS[t.id];return s&&!s.gone&&s.status!=="issued"&&s.status!=="declined"}))return toast("You already have a request in progress");
+  if(ALL.slice(0,10).some(isOpen))return toast("You already have an open request. Wait until it is closed.");
   const b=$("#m_go");b.disabled=true;const d={name:n,rank:rk,unit:u,issuedFor:f,email:email,source:"T.O LMS Portal",status:"pending",type:ty,createdAt:firebase.firestore.FieldValue.serverTimestamp()};if(pv)d.note="Previous certificate: "+pv;
   try{const ref=await mrfDb().collection("requests").add(d);ALL.unshift({id:ref.id,t:Date.now(),ty});medSave(email,ALL.slice(0,40));medSet("mrfPf:"+email,{rk,u});medOpen=ref.id;toast("Request sent to the Medical Reserve Force");portal(email)}
   catch{b.disabled=false;toast("Could not send the request. Try again.")}}}
 /* Documents section: issued medical certificates */
 async function bindMedDocs(email){medStop();const tok=medTok,el=$("#medDocs");if(!el)return;el.innerHTML='<p class="note">Loading...</p>';const L=(await medLoad(email)).slice(0,20);if(tok!==medTok)return;const F={};
  const draw=()=>{const ids=L.filter(t=>F[t.id]);
-  el.innerHTML='<div class="cardh"><h3>Medical certificates</h3></div>'+(ids.length?ids.map(t=>{const f=F[t.id];return`<div class="pcard" style="margin-bottom:12px"><div class="prow2"><div><small>${esc(f.date||"")} · valid ${esc(f.valid||"")}</small><div class="num" style="font-size:1rem">${esc(f.issuedFor||"Medical certificate")}</div></div><button class="btn sm" data-md="${t.id}">Download</button></div><img src="${f.img}" alt="" style="width:100%;border-radius:12px;margin-top:10px"></div>`}).join(""):'<p class="note">No medical certificate yet. It appears here once the Medical Reserve Force approves your request.</p>');
+  el.innerHTML='<div class="cardh"><h3>Medical certificates</h3></div>'+(ids.length?ids.map(t=>{const f=F[t.id];return`<div class="pdoc"><span class="pico">${ico("med",30,2.4)}</span><div><b>Medical certificate (image)</b><small>${esc(f.issuedFor||"")} · ${esc(f.date||"")}</small></div><button class="btn sm" data-md="${t.id}">Download</button></div>`}).join(""):'<p class="note">No medical certificate yet. It appears here once the Medical Reserve Force approves your request.</p>');
   $$("[data-md]",el).forEach(b=>b.onclick=()=>{try{const f=F[b.dataset.md],a=document.createElement("a");a.href=URL.createObjectURL(dataBlob(f.img));a.download="Medical-Certificate-"+(f.name||"MRF").replace(/\W+/g,"-")+".jpg";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}catch{toast("Download is not supported in this viewer")}})};
  draw();L.forEach(t=>medUn.push(mrfDb().doc("certfiles/"+t.id).onSnapshot(d=>{if(d.exists)F[t.id]=d.data();else delete F[t.id];draw()},()=>{})))}
 function portal(email){medStop();
