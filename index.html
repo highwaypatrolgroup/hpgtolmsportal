@@ -1658,7 +1658,8 @@ const PI={
  home:'<path d="M6 32L32 9l26 23"/><path d="M13 27v29h38V27"/><path d="M26 56V38h12v18"/>',
  out:'<path d="M27 10H12v44h15"/><path d="M40 20l12 12-12 12M52 32H24"/>',
  chev:'<path d="M24 12l20 20-20 20"/>',
- chat:'<path d="M8 10h48v32H26L12 54V42H8z"/><path d="M20 22h24M20 31h14"/>'};
+ chat:'<path d="M8 10h48v32H26L12 54V42H8z"/><path d="M20 22h24M20 31h14"/>',
+ med:'<path d="M15 6h25l12 12v40H15z"/><path d="M40 6v12h12"/><path d="M33 28v16M25 36h16"/>'};
 const ico=(k,z=64,w=2)=>`<svg viewBox="0 0 64 64" width="${z}" height="${z}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PI[k]}</svg>`;
 const PTILES=[["lic","LICENSING","cert","Details & validity"],["vio","VIOLATIONS","bank","Demerit points"],["doc","DOCUMENTS","file","Downloads"],["pro","PROFILE","user","Your account"],["sup","SUPPORT","chat","FAQs & live chat"]];
 function dlRecord(r){try{const V=vsOf(r),t=dem(r),L=["TRANSPORTATION OFFICE - LMS PORTAL","DRIVING RECORD","","Holder: "+(r.name||"-"),"License No.: "+(r.licenseNo||"-"),"Type: "+(r.type||"-"),"Status: "+r.status,"Issued: "+(r.issued||"-"),"Expires: "+(r.expiry||"-"),"Codes: "+((r.restr||[]).join(", ")||"-"),"","Demerit points: "+t+" ("+standing(t).l+")","","Violations:",...(V.length?V.map(v=>"- "+v.date+"  "+v.title+" (+"+pts(v)+" pts)"+(v.notes?" - "+v.notes:"")):["None on record."]),"","Generated "+new Date().toLocaleString()];
@@ -1865,9 +1866,39 @@ function vrReview(id){const d=load(),v=d.vehicles.find(x=>x.id===id);if(!v)retur
   A.engine=A.engine||vrUniq(x,"engine",()=>rA(VCH,2)+rA(VCD,1)+"-"+rA(VCD,7));
   const mo=Math.min(120,Math.max(1,Math.round(+$("#vmo",m).value)||VEH_MONTHS));A.status="Approved";A.note="";A.renewReq=false;A.renewNote="";A.regDate=today();A.expiry=addM(A.regDate,mo);A.by=(sess()||{}).email||"";
   try{save(x)}catch{return toast("Storage is full.")}m.remove();toast("Registered · certificate issued");admin()}}
-function portal(email){
+/* ===== MEDICAL CERTIFICATE (requests go to the Medical Reserve Force terminal) ===== */
+const MRF_CFG={apiKey:"AIzaSyAHfGXq5xMEfkgoSi9C3PRoxayLYc7bIaY",authDomain:"mrf-system-22299.firebaseapp.com",projectId:"mrf-system-22299",appId:"1:669835853910:web:8728962e32e96de79f7bf7"};
+let _mrf=null,medUn=[],medS={};
+const mrfDb=()=>{if(!_mrf){let a;try{a=firebase.app("mrf")}catch{a=firebase.initializeApp(MRF_CFG,"mrf")}_mrf=a.firestore()}return _mrf};
+const medStop=()=>{medUn.forEach(f=>{try{f()}catch{}});medUn=[]};
+const medGet=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch{return d}},medSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+const MRANKS=["Police Patrolman","Police Corporal","Police Staff Sergeant","Police Master Sergeant","Police Senior Master Sergeant","Police Chief Master Sergeant","Police Executive Master Sergeant","Police Lieutenant","Police Captain","Police Major","Police Lieutenant Colonel","Police Colonel","Police Brigadier General","Police Major General","Police Lieutenant General","Police General"];
+function medHTML(r,email){const pf=medGet("mrfPf:"+email,{});
+ return`<div class="pcard"><h3 style="margin:0 0 6px">Request a medical certificate</h3><p class="note" style="margin:0 0 14px">Your request goes to the Medical Reserve Force. A medical examiner picks it up and the status shows below.</p>
+ ${fld("m_n","Roblox username","text",'maxlength="60" value="'+esc((r&&r.name)||"")+'"')}
+ <div class="fld"><input id="m_r" list="m_rl" placeholder=" " maxlength="60" value="${esc(pf.rk||"")}"><label for="m_r">TPNP rank</label></div><datalist id="m_rl">${MRANKS.map(x=>`<option value="${x}">`).join("")}</datalist>
+ ${fld("m_u","Unit / office","text",'maxlength="80" value="'+esc(pf.u||"")+'"')}
+ ${fld("m_f","Issued for","text",'maxlength="80" value="TPNP | TRANSPORTATION OFFICE"')}
+ <button class="btn full" id="m_go">Send request</button></div><div id="medList"></div>`}
+function bindMed(email,r){medStop();const key="mrfTk:"+email,L=medGet(key,[]).slice(0,10);
+ const LAB={pending:["Pending","Waiting for a medical examiner"],open:["Pending","Waiting for a medical examiner"],progress:["Pending","In progress"],issued:["Active","Issued"],declined:["Expired","Declined"]};
+ const draw=()=>{const el=$("#medList");if(!el)return;
+  el.innerHTML=L.length?'<div class="cardh"><h3>My requests</h3></div>'+L.map(t=>{const s=medS[t.id]||{},k=s.gone?"declined":(s.status||"pending"),b=LAB[k]||LAB.pending;
+   return`<div class="pcard" style="margin-bottom:12px"><div class="prow2"><div><small>${s.ticketNo?"TICKET #"+String(s.ticketNo).padStart(3,"0")+" · ":""}${esc(new Date(t.t).toLocaleDateString())}</small><div class="num" style="font-size:1rem">${esc(s.issuedFor||"Medical certificate")}</div></div><span class="pill ${b[0]}">${s.gone?"Not found":b[1]}</span></div>
+   ${k==="progress"&&s.handlerName?`<p class="note" style="margin:10px 0 0">Being handled by <b>${esc(s.handlerName)}</b></p>`:""}
+   ${k==="issued"?'<p class="note" style="margin:10px 0 0">Your medical certificate has been issued. The Medical Reserve Force will give you your copy.</p>':""}
+   ${k==="declined"&&s.declineReason?`<p class="note" style="margin:10px 0 0"><b>Reason:</b> ${esc(s.declineReason)}</p>`:""}</div>`}).join(""):""};
+ L.forEach(t=>medUn.push(mrfDb().doc("requests/"+t.id).onSnapshot(d=>{medS[t.id]=d.exists?d.data():{gone:1};draw()},()=>{})));draw();
+ $("#m_go").onclick=async()=>{const n=$("#m_n").value.trim(),rk=$("#m_r").value.trim(),u=$("#m_u").value.trim(),f=$("#m_f").value.trim();
+  if(!n||!rk||!u||!f)return toast("Fill in every field");
+  if(L.some(t=>{const s=medS[t.id];return s&&!s.gone&&s.status!=="issued"&&s.status!=="declined"}))return toast("You already have a request in progress");
+  const b=$("#m_go");b.disabled=true;
+  try{const ref=await mrfDb().collection("requests").add({name:n,rank:rk,unit:u,issuedFor:f,email:email,source:"T.O LMS Portal",status:"pending",createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+   L.unshift({id:ref.id,t:Date.now()});medSet(key,L);medSet("mrfPf:"+email,{rk,u});toast("Request sent to the Medical Reserve Force");portal(email)}
+  catch{b.disabled=false;toast("Could not send the request. Try again.")}}}
+function portal(email){medStop();
  const r=load().records.find(x=>x.email===email),tot=r?dem(r):0,st=standing(tot),nm=((r&&r.name)||email.split("@")[0]);
- const TT={sup:"Support",id:"Digital ID",lic:"Licensing",vio:"Violations",doc:"Documents",pro:"Profile",ren:"Renewal",reg:"Registration"};
+ const TT={sup:"Support",id:"Digital ID",lic:"Licensing",vio:"Violations",doc:"Documents",pro:"Profile",ren:"Renewal",reg:"Registration",med:"Medical certificate"};
  const stu=r&&r.type==="Student Permit",snote=stu?'<div class="pnote"><b>STUDENT PERMIT</b><br>You may drive only when a companion with a valid driver’s license is seated beside you.</div>':"";
  let body;const canRen=!!r&&!stu&&r.status==="Expired";if(pview==="ren"&&!canRen)pview="lic";
  if(pview==="home"||!TT[pview]){pview="home";
@@ -1876,6 +1907,7 @@ function portal(email){
   <h1 class="pwel"><span>WELCOME,</span><b>${esc(nm)}</b></h1><div class="pdiv"><i></i><em></em><i></i></div><p class="psub">What would you like to do?</p>
   <button class="pfeat" data-go="id"><span class="pico">${ico("license",44,2.2)}</span><span class="tx"><b>DIGITAL ID</b><small>Your ${stu?"student permit":"driver’s license"}, always with you</small></span><span class="chev">${ico("chev",22,4)}</span></button>
   <button class="pfeat" data-go="reg" style="margin-top:12px"><span class="pico">${ico("car",44,2.2)}</span><span class="tx"><b>VEHICLE REGISTRATION</b><small>Register your vehicles · certificates</small></span><span class="chev">${ico("chev",22,4)}</span></button>
+  <button class="pfeat" data-go="med" style="margin-top:12px"><span class="pico">${ico("med",44,2.2)}</span><span class="tx"><b>MEDICAL CERTIFICATE</b><small>Request one from the Medical Reserve Force</small></span><span class="chev">${ico("chev",22,4)}</span></button>
   <div class="ptiles">${PTILES.map((t,i)=>`<button class="ptile${t[0]==="sup"?" wide":""}" style="--i:${i+2}" data-go="${t[0]}"><span class="pico">${ico(t[2],30,2.4)}</span><span><b>${t[1]}${t[0]==="sup"&&supUnreadU(load(),email)?` <em class="bdg">${supUnreadU(load(),email)}</em>`:""}</b><small>${t[3]}</small></span></button>`).join("")}</div>`}
  else{let c='<div class="pcard empty">You don’t have a license or permit yet. Open Licensing to apply.</div>';
   if(r){
@@ -1889,6 +1921,7 @@ function portal(email){
     <div class="pdoc"><span class="pico">${ico("file",30,2.4)}</span><div><b>Driving record</b><small>Details and violations (text file)</small></div><button class="btn sm" id="prec">Download</button></div>`;
    if(pview==="pro")c=`<div class="pav">${r.photo?`<img src="${r.photo}" alt="">`:esc(ini(r.name))}</div><div class="pcard"><div class="grid">${[["Roblox username",r.name],["Discord",r.discord],["Gmail",r.email],["Age",r.age],["Sex",r.sex],["Nationality",r.nat],[stu?"Permit no.":"License no.",r.licenseNo],["Type",r.type]].map(x=>`<div class="kv"><small>${x[0]}</small>${esc(x[1])||"—"}</div>`).join("")}</div></div><button class="btn ghost full" id="out2">Log out</button>`}
   if(pview==="reg")c=regHTML(r,email);
+  if(pview==="med")c=medHTML(r,email);
   if(pview==="lic"){const h=licHTML(r,email);c=lform?h:h+(r?c:"")}
   if(pview==="sup")c=supHTML(email);
   body=`<div class="phd"><button class="pback" data-go="${pview==="ren"?"lic":"home"}">‹ Back</button><h2>${TT[pview].toUpperCase()}</h2></div>${c}`}
@@ -1904,6 +1937,7 @@ function portal(email){
  if(pview==="ren"&&r)bindRen(email);
  if(pview==="lic")bindLic(email,r);
  if(pview==="reg")bindReg(email,r);
+ if(pview==="med")bindMed(email,r);
  if(r){const d1=$("#pdl");if(d1)d1.onclick=()=>dlLicense(r);const d2=$("#prec");if(d2)d2.onclick=()=>dlRecord(r)}
  const o2=$("#out2");if(o2)o2.onclick=()=>$("#out").click()}
 document.body.classList.add("splashing");
