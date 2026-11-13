@@ -266,6 +266,9 @@ main{padding:14px 14px 96px}.head h2{font-size:1.2rem}.mlogo{display:block;width
 .ppanel .cw{max-width:520px;filter:drop-shadow(0 18px 30px #000a)}.ppanel .hint{color:#b8c9f5}.ppanel .empty,.ppanel .note{color:#cfdcff}
 @media(min-width:760px){.ppanel{max-width:880px;padding:36px 44px 28px}.ptiles{grid-template-columns:repeat(4,1fr)}.ptop .pb{display:block}.plogoW{width:170px}.pmain{padding-top:28px}}
 .bgrp{display:flex;flex-direction:column;gap:14px;margin-top:6px}
+.gsep{display:flex;align-items:center;gap:10px;margin:16px 0 12px;color:var(--mu);font-size:.72rem;letter-spacing:1.5px;text-transform:uppercase}.gsep:before,.gsep:after{content:"";flex:1;height:1px;background:currentColor;opacity:.25}
+.gbtn{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 14px;border-radius:12px;border:1px solid rgba(128,128,128,.35);background:#fff;color:#1f1f1f;font:600 .92rem system-ui,sans-serif;cursor:pointer;transition:transform .15s,box-shadow .15s}.gbtn:hover{box-shadow:0 4px 14px rgba(0,0,0,.18)}.gbtn:active{transform:scale(.98)}.gbtn:disabled{opacity:.6;cursor:wait}
+
 .btn.big{width:100%;padding:17px 16px;border-radius:20px;font-size:1.08rem;font-weight:800;letter-spacing:.01em;text-transform:uppercase;box-shadow:none}
 .btn.big.reg{background:#e2001a;box-shadow:0 12px 26px #e2001a55}.btn.big.reg:hover{background:#f0102a;box-shadow:0 16px 32px #e2001a77}
 .btn.big.out{background:transparent;border:1px solid #ffffffcc}.btn.big.out:hover{background:#ffffff14;box-shadow:none}
@@ -643,6 +646,7 @@ async function resolveRole(u){const em=(u.email||"").toLowerCase();
   {const sd=await FS.doc("staff/"+mid(em)).get();if(sd.exists){let sc="";try{sc=JSON.parse(sd.data().j).s}catch{}const ro=sc==="viol"?"officer":"staff";await ensureAcct(em,ro);return{role:ro,email:em}}}
   if(dn==="PENDING_STAFF")return{err:"nostaff"};
   if((await FS.doc("wl/"+mid(em)).get()).exists){await ensureAcct(em,"licensee");return{role:"licensee",email:em}}
+  if(window.__gsi&&dn.indexOf("PENDING")!==0){await FS.doc("wl/"+mid(em)).set({k:"wl",n:em,j:"{}",e:""});await ensureAcct(em,"licensee");return{role:"licensee",email:em}}
   if(dn==="PENDING_NEW"){await FS.doc("wl/"+mid(em)).set({k:"wl",n:em,j:"{}",e:""});await ensureAcct(em,"licensee");try{await u.updateProfile({displayName:"DONE:"})}catch{}return{role:"licensee",email:em}}
   if(dn.indexOf("PENDING:")===0)return await claim(u,em,dn.slice(8));
   return{err:"notwl"}}catch(e){console.error(e);return{err:"net"}}}
@@ -681,8 +685,17 @@ function login(){
  ${fld("p","Password","password",'autocomplete="current-password"')}<div class="fprow"><a class="fpl" id="fp" role="button" tabindex="0">Forgot password?</a></div></div></div>
  <div class="err" id="err"></div>
  <div class="bgrp"><button class="btn big reg" id="sg" type="button">Register now</button><button class="btn big out" id="go">Log in</button></div>
- <div class="hint" style="margin-top:52px"><a class="fpl" role="button" tabindex="0" data-legal="privacy">Privacy Policy</a> · <a class="fpl" role="button" tabindex="0" data-legal="terms">Terms of Service</a><br><br>Licensing Management System<br><b style="color:var(--mu);letter-spacing:2px">By Franxzzzz</b></div></div></div>`);
+ <div class="gsep">or</div><button class="gbtn" id="gg" type="button"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>Continue with Google</button>
+ <div class="hint" style="margin-top:28px"><a class="fpl" role="button" tabindex="0" data-legal="privacy">Privacy Policy</a> · <a class="fpl" role="button" tabindex="0" data-legal="terms">Terms of Service</a><br><br>Licensing Management System<br><b style="color:var(--mu);letter-spacing:2px">By Franxzzzz</b></div></div></div>`);
  $("#lthm").onclick=togTheme;eyes();$("#fp").onclick=()=>forgot();$("#fp").onkeydown=e=>{if(e.key==="Enter")forgot()};$("#sg").onclick=()=>{screen="signup";render()};
+ $("#gg").onclick=async()=>{const b=$("#gg");if(b.disabled)return;b.disabled=true;window.__gsi=true;
+  try{const pr=new firebase.auth.GoogleAuthProvider();pr.setCustomParameters({prompt:"select_account"});
+   const cred=await AUTH.signInWithPopup(pr),em=(cred.user.email||"").toLowerCase(),isA=!/REPLACE_WITH/.test(ADMIN_EMAIL)&&em===ADMIN_EMAIL.toLowerCase();
+   if(!isA&&!isGmail(em)){window.__gsi=false;await AUTH.signOut();b.disabled=false;return fail("Sign in with a Gmail address.")}
+   const r=await resolveRole(cred.user);window.__gsi=false;
+   if(!r.role){await AUTH.signOut();b.disabled=false;return fail(MSG[r.err]||MSG.net)}
+   setSess(r);await startSync(r.role,r.email);render()}
+  catch(e){window.__gsi=false;b.disabled=false;const c=e&&e.code;fail(c==="auth/popup-closed-by-user"||c==="auth/cancelled-popup-request"?"Google sign-in was cancelled.":c==="auth/popup-blocked"?"Your browser blocked the Google pop-up. Allow pop-ups and try again.":c==="auth/unauthorized-domain"?"This website's domain is not authorized for Google sign-in in Firebase.":c==="auth/operation-not-allowed"?"Google sign-in is not enabled in Firebase yet.":aerr(e))}};
  $("#go").onclick=()=>{const lf=$("#lf");if(!lf.classList.contains("open")){lf.inert=false;lf.classList.add("open");setTimeout(()=>{const u=$("#u");if(u)u.focus()},420);return}run()};$$("#f input").forEach(i=>i.onkeydown=e=>{if(e.key==="Enter")run()});const run=async()=>{const u=$("#u").value.trim(),p=$("#p").value,btn=$("#go");
   if(!u||!p)return fail("Enter your username/Gmail and password.");
   btn.disabled=true;btn.textContent="Signing in…";
