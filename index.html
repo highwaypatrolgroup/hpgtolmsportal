@@ -512,7 +512,7 @@ html[data-theme=light] .auth .lthm{color:#0f1b3d;background:#ffffffcc}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script>
-document.documentElement.dataset.theme=(function(){try{return localStorage.getItem("to_theme")}catch{return null}})()||"light";
+document.documentElement.dataset.theme=(function(){try{return localStorage.getItem("to_theme")}catch{return null}})()||"dark";
 /* ===== SETTINGS: change before uploading ===== */
 /* The administrator logs in with this Firebase account (create it in Firebase console > Authentication > Users).
    Typing "admin" on the login screen is a shortcut for this email. Use the SAME email in the Firestore rules. */
@@ -944,7 +944,7 @@ function records(){
  $$("[data-d]").forEach(b=>b.onclick=()=>{if(!confirm("Delete this license record?"))return;const x=load(),dr=x.records.find(r=>r.id===+b.dataset.d);x.records=x.records.filter(r=>r.id!==+b.dataset.d);if(dr)x.violations=x.violations.filter(v=>norm(v.licenseNo||"")!==norm(dr.licenseNo||""));save(x);toast("Deleted");admin()})}
 function renew(id,m){const x=load(),i=x.records.findIndex(r=>r.id===id);if(i<0)return;const r=x.records[i],n=x.violations.filter(v=>norm(v.licenseNo||"")===norm(r.licenseNo||"")).length;
  if(!confirm("Renew "+(r.name||r.licenseNo)+"?\n\nThis sets a new "+VALID_MONTHS+"-month expiry, marks the license Active, and clears "+n+" violation(s) and all demerit points."))return;
- (r.hist=r.hist||[]).push({k:"renew",d:today()});r.issued=today();r.expiry=addM(r.issued,VALID_MONTHS);r.status="Active";r.baseStatus="Active";delete r.renewOk;x.violations=x.violations.filter(v=>norm(v.licenseNo||"")!==norm(r.licenseNo||""));save(x);toast("License renewed");if(m)m.remove();admin();if(m)info(id)}
+ (r.hist=r.hist||[]).push({k:"renew",d:today()});r.issued=today();r.expiry=addM(r.issued,VALID_MONTHS);r.status="Active";r.baseStatus="Active";delete r.renewOk;delete r.renewStage;delete r.renewNote;x.violations=x.violations.filter(v=>norm(v.licenseNo||"")!==norm(r.licenseNo||""));save(x);toast("License renewed");if(m)m.remove();admin();if(m)info(id)}
 const okFile=f=>!!f&&/^image\/(jpeg|png|webp)$/.test(f.type)&&f.size<=8e6,readFile=f=>new Promise((ok,no)=>{if(!okFile(f))return no(new Error("bad file"));const x=new FileReader();x.onload=()=>ok(x.result);x.onerror=no;x.readAsDataURL(f)});
 /* turns a white / light paper background into transparency (skipped when the image is already transparent) */
 function unwhite(cv){const c=cv.getContext("2d"),w=cv.width,h=cv.height,im=c.getImageData(0,0,w,h),d=im.data;let t=0;for(let i=3;i<d.length;i+=4)if(d[i]<200)t++;if(t>d.length/4*.02)return;
@@ -1498,25 +1498,41 @@ const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=rnd(i+1);[a[i],a[j]]=[a[
 let rstep="docs",qz=null,rres=null,rdocs={med:null,lic:null,r2fa:null,d2fa:null};
 const shrink=f=>new Promise((ok,no)=>{if(!okFile(f))return no(new Error("bad file"));const rd=new FileReader();rd.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);g.drawImage(im,0,0,c.width,c.height);ok(c.toDataURL("image/jpeg",.7))};im.onerror=no;im.src=rd.result};rd.onerror=no;rd.readAsDataURL(f)});
 const RDOC=[["med","Valid medical certificate","Upload a clear photo or scan of your current medical certificate."],["lic","Picture of your license","Upload a clear picture of your license (front side)."],["r2fa","Roblox 2FA","Upload a screenshot showing 2-step verification is turned on for your Roblox account."],["d2fa","Discord 2FA","Upload a screenshot showing two-factor authentication is turned on for your Discord account."]];
+let rmode=null,rapp=null;
+const rstage=r=>{if(!r)return"";if(r.renewOk)return"ok";if(r.renewStage==="exam")return"exam";if(r.renewStage==="changes")return"changes";if(r.renewStage==="review")return"review";
+ if(r.status==="Expired"&&r.renewDocs&&r.renewDocs.date&&r.renewDocs.date>=(r.expiry||""))return"review";return""};
 function startQuiz(){const d=load(),B=bankOf(d).filter(q=>q.q&&q.o&&q.o.length>=2&&q.o[q.a]!=null);
- qz={i:0,ans:[],items:shuffle([...B]).slice(0,30).map(q=>{const ix=shuffle(q.o.map((_,i)=>i));return{cat:q.cat,q:q.q,opts:ix.map(i=>q.o[i]),right:ix.indexOf(q.a)}})}}
+ const seen=[];B.forEach(q=>{const c=q.cat||"General";if(!seen.includes(c))seen.push(c)});
+ const names=[...CATS.filter(c=>seen.includes(c)),...seen.filter(c=>!CATS.includes(c))],N=names.length||1,base=Math.floor(30/N);let extra=30-base*N;
+ const cats=[],items=[];
+ names.forEach(c=>{const pool=shuffle(B.filter(q=>(q.cat||"General")===c));let want=base+(extra>0?1:0);if(extra>0)extra--;
+  const pick=pool.slice(0,want).map(q=>{const ix=shuffle(q.o.map((_,i)=>i));return{cat:c,q:q.q,opts:ix.map(i=>q.o[i]),right:ix.indexOf(q.a)}});
+  if(pick.length){cats.push({name:c,start:items.length,end:items.length+pick.length-1});pick.forEach(x=>items.push(x))}});
+ qz={i:0,ans:[],items,cats,intro:true}}
+const qcat=()=>{const k=qz.cats.findIndex(c=>qz.i>=c.start&&qz.i<=c.end);return k<0?0:k};
 function finishQuiz(r){const n=qz.items.length,score=qz.items.filter((it,i)=>qz.ans[i]===it.right).length,x=load(),mark=Math.min(x.examCfg.pass,n),pass=score>=mark;
- x.attempts.push({id:Date.now(),licenseNo:r.licenseNo,date:today(),score,total:n,pass,mark});
- if(pass){const rec=x.records.find(y=>y.id===r.id);if(rec)rec.renewOk={date:today(),score,total:n}}
+ if(rmode==="app"){const A=x.apps.find(y=>y.id===rapp);x.attempts.push({id:Date.now(),licenseNo:(r&&r.licenseNo)||(A&&A.prevNo)||"",date:today(),score,total:n,pass,mark});
+  if(pass&&A){A.status="Exam passed";A.exam={date:today(),score,total:n};(A.hist=A.hist||[]).push({d:today(),k:"exam passed"})}}
+ else{x.attempts.push({id:Date.now(),licenseNo:r.licenseNo,date:today(),score,total:n,pass,mark});
+  if(pass){const rec=x.records.find(y=>y.id===r.id);if(rec)rec.renewOk={date:today(),score,total:n}}}
  save(x);rres={score,total:n,pass,mark};rstep="done";qz=null}
 function renHTML(r){
- if(rstep==="quiz"&&qz){const n=qz.items.length,it=qz.items[qz.i],last=qz.i===n-1;
-  return`<div class="pcard"><div class="qtop"><span>Question ${qz.i+1} of ${n}</span><span class="pill">${esc(it.cat)}</span></div><div class="dist"><i style="width:${(qz.i+1)/n*100}%;background:#e0b04b"></i></div>
-  <h3 class="qq">${esc(it.q)}</h3>${it.opts.map((o,j)=>`<button class="qopt${qz.ans[qz.i]===j?" on":""}" data-o="${j}"><b>${"ABCD"[j]}</b><span>${esc(o)}</span></button>`).join("")}
-  <div class="tools" style="margin:6px 0 0"><button class="btn ghost" id="qprev" ${qz.i?"":"disabled"}>Previous</button><button class="btn" id="qnext">${last?"Finish":"Next"}</button></div></div>`}
+ if(rstep==="quiz"&&qz){const n=qz.items.length,k=qcat(),c=qz.cats[k],NC=qz.cats.length;
+  if(qz.intro)return`<div class="pcard"><div class="qtop"><span>Part ${k+1} of ${NC}</span><span class="pill">${esc(c.name)}</span></div><div class="dist"><i style="width:${k/NC*100}%;background:#e0b04b"></i></div>
+  <h3 class="qq" style="margin-top:14px">${esc(c.name)}</h3><p class="note" style="margin:0 0 14px">${c.end-c.start+1} questions. Finish this category to unlock the next one. You will not see the other categories until then, and you cannot come back to a finished category.</p>
+  <button class="btn full" id="qgo">${k===0?"Start":"Start category"}</button></div>`;
+  const it=qz.items[qz.i],j=qz.i-c.start,m=c.end-c.start+1,last=qz.i===c.end,fin=last&&k===NC-1;
+  return`<div class="pcard"><div class="qtop"><span>${esc(c.name)} · Question ${j+1} of ${m}</span><span class="pill">Part ${k+1}/${NC}</span></div><div class="dist"><i style="width:${(j+1)/m*100}%;background:#e0b04b"></i></div>
+  <h3 class="qq">${esc(it.q)}</h3>${it.opts.map((o,jj)=>`<button class="qopt${qz.ans[qz.i]===jj?" on":""}" data-o="${jj}"><b>${"ABCD"[jj]}</b><span>${esc(o)}</span></button>`).join("")}
+  <div class="tools" style="margin:6px 0 0"><button class="btn ghost" id="qprev" ${qz.i>c.start?"":"disabled"}>Previous</button><button class="btn" id="qnext">${fin?"Finish exam":last?"Finish category":"Next"}</button></div></div>`}
  if(rstep==="done"&&rres)return`<div class="pcard"><div class="qres ${rres.pass?"ok":"no"}"><span>${rres.pass?"PASSED":"NOT PASSED"}</span><b>${rres.score}/${rres.total}</b></div>
   <p class="note" style="text-align:center">Passing score: ${rres.mark}/${rres.total}</p>
   <p style="text-align:center;line-height:1.5;margin:10px 0 16px">${rres.pass?"Your result has been sent to the Transportation Office. Staff will complete your renewal.":"You can take the test again. The questions are shuffled every time."}</p>
   <button class="btn full" id="rbk">Back to licensing</button>${rres.pass?"":'<button class="btn ghost full" id="rrt" style="margin-top:10px">Retake test</button>'}</div>`;
  if(rstep==="docs"){const ok=RDOC.every(d=>rdocs[d[0]]);
-  return`<div class="pcard"><h3 style="margin:0 0 6px">Renewal requirements</h3><p class="note" style="margin:0 0 14px">Upload all the requirements before you can proceed to the renewal exam.</p>
+  return`<div class="pcard"><h3 style="margin:0 0 6px">Renewal requirements</h3><p class="note" style="margin:0 0 14px">Upload all the requirements and send them to the Transportation Office. Staff must approve them before the renewal exam is unlocked on your Licensing page.</p>
   ${RDOC.map(d=>`<div class="rdoc"><div class="rdv" id="v_${d[0]}">${rdocs[d[0]]?`<img src="${rdocs[d[0]]}" alt="">`:"No file"}</div><div class="rdt"><b>${d[1]} <span style="color:#e0b04b">*</span></b><small>${d[2]}</small><button class="btn ghost sm" type="button" id="b_${d[0]}">${rdocs[d[0]]?"Replace":"Upload"}</button><input type="file" id="f_${d[0]}" accept="image/*" hidden></div></div>`).join("")}
-  <button class="btn full" id="rdgo" ${ok?"":"disabled"} style="margin-top:6px">Continue to exam</button><button class="btn ghost full" id="rdno" style="margin-top:10px">Cancel</button></div>`}
+  <button class="btn full" id="rdgo" ${ok?"":"disabled"} style="margin-top:6px">Submit requirements for review</button><button class="btn ghost full" id="rdno" style="margin-top:10px">Cancel</button></div>`}
  return`<div class="pcard"><h3 style="margin:0 0 6px">Renewal test agreement</h3><p class="note" style="margin:0">Please read and accept these rules before you start.</p>
   <ul class="agl"><li>I will answer every question <b>honestly</b> and <b>by myself</b>.</li><li>I will <b>not use AI</b> tools (such as ChatGPT), search engines, or help from other people during the test.</li><li>I understand that breaking these rules will lead to <b>serious consequences</b>, including <b>blacklistment from taking a driver’s license and from driving a vehicle</b>.</li></ul>
   <p class="note" style="margin:0">The test has 30 questions about licenses, vehicles and road rules. The questions are shuffled every time.</p>
@@ -1524,18 +1540,22 @@ function renHTML(r){
   <button class="btn full" id="agy" disabled>I agree, start the test</button><button class="btn ghost full" id="agn" style="margin-top:10px">Cancel</button></div>`}
 function bindRen(email){
  const re=()=>{portal(email);window.scrollTo(0,0)},r=load().records.find(x=>x.email===email);
- if(rstep==="docs"){
+ if(rstep==="docs"&&r){
   const chk=()=>{$("#rdgo").disabled=!RDOC.every(d=>rdocs[d[0]])};
   RDOC.forEach(d=>{const k=d[0];$("#b_"+k).onclick=()=>$("#f_"+k).click();$("#f_"+k).onchange=async e=>{const f=e.target.files[0];if(!f)return;if(!/^image\//.test(f.type))return toast("Please choose an image file");try{rdocs[k]=await shrink(f);$("#v_"+k).innerHTML='<img src="'+rdocs[k]+'" alt="">';$("#b_"+k).textContent="Replace";chk()}catch{toast("Could not read that image")}}});
-  $("#rdgo").onclick=()=>{if(!RDOC.every(d=>rdocs[d[0]]))return toast("Upload all the requirements first");const x=load(),rec=x.records.find(y=>y.id===r.id);if(rec){rec.renewDocs={med:rdocs.med,lic:rdocs.lic,r2fa:rdocs.r2fa,d2fa:rdocs.d2fa,date:today()};try{save(x)}catch{}}rstep="agree";re()};
+  $("#rdgo").onclick=()=>{if(!RDOC.every(d=>rdocs[d[0]]))return toast("Upload all the requirements first");const x=load(),rec=x.records.find(y=>y.id===r.id);if(rec){rec.renewDocs={med:rdocs.med,lic:rdocs.lic,r2fa:rdocs.r2fa,d2fa:rdocs.d2fa,date:today()};rec.renewStage="review";rec.renewNote="";delete rec.renewOk;try{save(x)}catch{return toast("Storage is full. Use smaller images.")}}toast("Requirements sent. Staff will review them.");rstep="docs";pview="lic";rmode=null;re()};
   $("#rdno").onclick=()=>{pview="lic";re()}}
- else if(rstep==="agree"){const k=$("#agk"),y=$("#agy");k.onchange=()=>{y.disabled=!k.checked};y.onclick=()=>{if(!k.checked)return;startQuiz();rstep="quiz";re()};$("#agn").onclick=()=>{pview="lic";re()}}
+ else if(rstep==="agree"){const k=$("#agk"),y=$("#agy");k.onchange=()=>{y.disabled=!k.checked};y.onclick=()=>{if(!k.checked)return;const dd=load(),okx=rmode==="app"?!!dd.apps.find(a=>a.id===rapp&&a.status==="Exam required"):(rmode==="rec"&&rstage(dd.records.find(x=>x.email===email))==="exam");if(!okx){toast("Staff must approve your requirements before you can take the exam");pview="lic";rmode=null;return re()}startQuiz();rstep="quiz";re()};$("#agn").onclick=()=>{pview="lic";rmode=null;re()}}
+ else if(rstep==="quiz"&&qz&&qz.intro){$("#qgo").onclick=()=>{qz.intro=false;re()}}
  else if(rstep==="quiz"&&qz){
   $$(".qopt").forEach(b=>b.onclick=()=>{qz.ans[qz.i]=+b.dataset.o;$$(".qopt").forEach(x=>x.classList.toggle("on",x===b))});
-  $("#qprev").onclick=()=>{if(qz.i>0){qz.i--;re()}};
-  $("#qnext").onclick=()=>{if(qz.ans[qz.i]==null)return toast("Choose an answer first");if(qz.i<qz.items.length-1){qz.i++;re();return}
-   const miss=qz.items.findIndex((_,i)=>qz.ans[i]==null);if(miss>=0){qz.i=miss;toast("Answer every question first");re();return}finishQuiz(r);re()}}
- else if(rstep==="done"){$("#rbk").onclick=()=>{pview="lic";re()};const rt=$("#rrt");if(rt)rt.onclick=()=>{rstep="agree";qz=null;re()}}}
+  $("#qprev").onclick=()=>{const c=qz.cats[qcat()];if(qz.i>c.start){qz.i--;re()}};
+  $("#qnext").onclick=()=>{if(qz.ans[qz.i]==null)return toast("Choose an answer first");const k=qcat(),c=qz.cats[k];
+   if(qz.i<c.end){qz.i++;re();return}
+   for(let i=c.start;i<=c.end;i++)if(qz.ans[i]==null){qz.i=i;toast("Answer every question in this category first");re();return}
+   if(k<qz.cats.length-1){qz.i=qz.cats[k+1].start;qz.intro=true;toast(c.name+" complete");re();return}
+   finishQuiz(r);re()}}
+ else if(rstep==="done"){$("#rbk").onclick=()=>{pview="lic";rmode=null;re()};const rt=$("#rrt");if(rt)rt.onclick=()=>{rstep="agree";qz=null;re()}}}
 /* staff: edit the question bank */
 let eEdit=null,eq="";
 const pendRev=d=>d.records.filter(r=>r.renewOk);
@@ -1546,7 +1566,7 @@ function bindRev(){$$("[data-rv]").forEach(b=>b.onclick=()=>info(+b.dataset.rv))
  $$("[data-rd]").forEach(b=>b.onclick=()=>{if(!confirm("Decline this renewal? The licensee will have to retake the exam."))return;const x=load(),r=x.records.find(y=>y.id===+b.dataset.rd);if(r){delete r.renewOk;save(x)}toast("Renewal declined");admin()})}
 function examPanel(){
  const d=load(),B=bankOf(d),n=B.length,A=[...d.attempts].sort((a,b)=>b.id-a.id).slice(0,40);
- $("#panel").innerHTML=revCard(d)+`<div class="card"><div class="cardh"><h3>Renewal test settings</h3></div><p class="note" style="margin:0 0 12px">Each test picks 30 random questions from the question bank (Settings → Exam Questions). Questions and answer order are shuffled every time a licensee starts the test.</p>
+ $("#panel").innerHTML=revCard(d)+`<div class="card"><div class="cardh"><h3>Renewal test settings</h3></div><p class="note" style="margin:0 0 12px">Each test picks 30 random questions from the question bank (Settings → Exam Questions), split evenly by category (License, Vehicle, Road). Licensees only see one category at a time and must finish it to unlock the next. Renewal order: licensee submits requirements → staff approve them (Applications) → exam unlocks on the Licensing page → licensee passes → staff approve &amp; renew.</p>
   <div class="tools">${fld("x_pass","Passing score (out of 30)","number").replace('placeholder=" "','placeholder=" " value="'+d.examCfg.pass+'" min="1" max="30"')}<button class="btn" id="xpm">Save</button></div></div>
  <div class="card"><div class="cardh"><h3>Exam questions</h3><button class="btn sm" id="xgo">Edit questions</button></div><p class="note" style="margin:0">${n} question${n===1?"":"s"} in the bank. Add, edit or delete them in Settings → Exam Questions.</p></div>
  <div class="card"><div class="cardh"><h3>Recent renewal tests</h3></div>${A.length?T(["Date","License holder","License No.","Score","Result"],A.map(a=>{const h=d.records.find(r=>norm(r.licenseNo||"")===norm(a.licenseNo||""));return[esc(a.date),esc(h?h.name||"No username":"Unknown"),`<span class="num">${esc(a.licenseNo)}</span>`,a.score+"/"+a.total,`<span class="pill ${a.pass?"Active":"Expired"}">${a.pass?"Passed":"Failed"}</span>`]})):'<div class="empty">No renewal tests taken yet.</div>'}</div>`;
@@ -1782,12 +1802,21 @@ function legal(k){const L=LEGAL[k];if(!L)return;const o=document.getElementById(
 document.addEventListener("click",e=>{const t=e.target.closest&&e.target.closest("[data-legal]");if(t){e.preventDefault();legal(t.dataset.legal)}});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.dataset&&e.target.dataset.legal)legal(e.target.dataset.legal)});
 /* ===== LICENSE APPLICATIONS ===== */
-const APK={student:"Student Permit",license:"Driver’s License",renew:"License Renewal"},APC={Pending:"Pending","Changes requested":"Suspended",Rejected:"Expired",Approved:"Active"};
+const APK={student:"Student Permit",license:"Driver’s License",renew:"License Renewal"},APC={Pending:"Pending","Changes requested":"Suspended",Rejected:"Expired",Approved:"Active","Exam required":"Pending","Exam passed":"Active"};
+function renewCard(r,email){const A=myApps(load(),email).find(a=>a.kind==="renew"&&(a.status==="Exam required"||a.status==="Exam passed")),rs=rstage(r);let ttl="",msg="",btn="",pill="Pending",lab="";
+ if(A&&A.status==="Exam required"){ttl="Renewal exam";lab="Unlocked";msg="Staff approved your requirements. You must pass the renewal exam before your license can be renewed.";btn=`<button class="btn full" data-ex="app" data-exid="${A.id}" style="margin-top:12px">Take renewal exam</button>`}
+ else if(A&&A.status==="Exam passed"){ttl="Renewal exam";lab="Passed";pill="Active";msg="You passed the exam"+(A.exam?" ("+A.exam.score+"/"+A.exam.total+")":"")+". Staff will complete your renewal."}
+ else if(rs==="review"){ttl="Renewal requirements";lab="Under review";msg="Your requirements were sent. Staff must approve them before the renewal exam is unlocked."}
+ else if(rs==="changes"){ttl="Renewal requirements";lab="Changes requested";pill="Suspended";msg="Staff asked for changes."+(r.renewNote?" Staff note: "+esc(r.renewNote):"")+" Use the Renew button below to resubmit."}
+ else if(rs==="exam"){ttl="Renewal exam";lab="Unlocked";msg="Staff approved your requirements. You must pass the renewal exam before your license can be renewed.";btn=`<button class="btn full" data-ex="rec" style="margin-top:12px">Take renewal exam</button>`}
+ else if(rs==="ok"){ttl="Renewal exam";lab="Passed";pill="Active";msg="You passed the exam"+(r.renewOk?" ("+r.renewOk.score+"/"+r.renewOk.total+")":"")+". Staff will complete your renewal."}
+ else return"";
+ return`<div class="pcard" style="margin-bottom:14px"><div class="prow2"><div><small>RENEWAL</small><div class="num" style="font-size:1rem">${ttl}</div></div><span class="pill ${pill}">${lab}</span></div><p class="note" style="margin:10px 0 0">${msg}</p>${btn}</div>`}
 const myApps=(d,e)=>d.apps.filter(a=>a.email===e).sort((a,b)=>b.id-a.id);
-function licHTML(r,email){const A=myApps(load(),email),last=A[0],busy=!!A.find(a=>a.status==="Pending"||a.status==="Changes requested");
+function licHTML(r,email){const A=myApps(load(),email),last=A[0],busy=!!A.find(a=>a.status==="Pending"||a.status==="Changes requested"||a.status==="Exam required"||a.status==="Exam passed");
  if(lform)return appForm();
  const stu=r&&r.type==="Student Permit",exp=r&&r.status==="Expired",have=r?(stu?(exp?"pexp":"permit"):(exp?"expired":"valid")):lhave;
- let h="";
+ let h=renewCard(r,email);
  if(last&&last.status!=="Approved")h+=`<div class="pcard" style="margin-bottom:14px"><div class="prow2"><div><small>LATEST APPLICATION</small><div class="num" style="font-size:1rem">${esc(APK[last.kind])}</div></div><span class="pill ${APC[last.status]}">${esc(last.status)}</span></div>${last.status==="Pending"?'<p class="note" style="margin:10px 0 0">Staff are reviewing your application.</p>':""}${last.note?`<p class="note" style="margin:10px 0 0"><b>Staff note:</b> ${esc(last.note)}</p>`:""}${last.status==="Changes requested"?`<button class="btn full" data-ed="${last.id}" style="margin-top:12px">Edit &amp; resubmit</button>`:""}</div>`;
  if(!have&&!busy)return h+`<div class="pcard" style="margin-bottom:14px"><h3 style="margin:0 0 6px">Do you already have a license?</h3><p class="note" style="margin:0 0 12px">This shows you the right option to apply for.</p><button class="btn full" data-lh="valid">Yes, it is still valid</button><button class="btn ghost full" data-lh="expired" style="margin-top:10px">Yes, but it has expired</button><button class="btn ghost full" data-lh="none" style="margin-top:10px">No, I don’t have one yet</button></div>`;
  const ok={valid:r?[]:["license"],expired:["renew"],none:["student"],permit:["license"],pexp:["license"]}[have]||[];
@@ -1808,7 +1837,8 @@ function appForm(){const a=lform,inp=(k,l,t="text")=>fld("a_"+k,l,t).replace('pl
  <button class="btn full" id="asub" style="margin-top:6px">${a.id?"Resubmit application":"Submit application"}</button><button class="btn ghost full" id="acan" style="margin-top:10px">Cancel</button></div>`}
 function bindLic(email,r){const re=()=>{portal(email);window.scrollTo(0,0)};
  $$("[data-lh]").forEach(b=>b.onclick=()=>{lhave=b.dataset.lh||null;re()});
- $$("[data-la]").forEach(b=>b.onclick=()=>{if(b.disabled)return;const k=b.dataset.la;if(k==="renew"&&r){pview="ren";rstep="docs";rdocs={med:null,lic:null,r2fa:null,d2fa:null};qz=null;re();return}
+ $$("[data-ex]").forEach(b=>b.onclick=()=>{rmode=b.dataset.ex;rapp=+b.dataset.exid||null;rstep="agree";qz=null;rres=null;pview="ren";re()});
+ $$("[data-la]").forEach(b=>b.onclick=()=>{if(b.disabled)return;const k=b.dataset.la;if(k==="renew"&&r){pview="ren";rmode=null;rstep="docs";rdocs={med:null,lic:null,r2fa:null,d2fa:null};qz=null;re();return}
   const l=myApps(load(),email).find(a=>a.photo)||{};lform={kind:k,name:(r&&r.name)||l.name||"",discord:(r&&r.discord)||l.discord||"",age:(r&&r.age)||l.age||"",sex:(r&&r.sex)||l.sex||"Male",nat:(r&&r.nat)||l.nat||"Filipino",restr:(r&&r.restr)||l.restr||[],photo:(r&&r.photo)||l.photo||"",sig:(r&&r.sig)||l.sig||"",med:"",lic:"",r2fa:"",d2fa:"",grp:"",prevNo:"",gName:"",gRel:"",gEmail:"",gsig:"",gok:false,tos:false};re()});
  $$("[data-ed]").forEach(b=>b.onclick=()=>{const a=myApps(load(),email).find(x=>x.id===+b.dataset.ed);if(a){lform=JSON.parse(JSON.stringify(a));re()}});
  const pr=$("#prenew");if(pr){pr.style.display="none";if(pr.nextElementSibling)pr.nextElementSibling.style.display="none"}
@@ -1822,30 +1852,39 @@ function bindLic(email,r){const re=()=>{portal(email);window.scrollTo(0,0)};
   if(a.id){const i=x.apps.findIndex(y=>y.id===a.id);if(i>=0){o.hist=(x.apps[i].hist||[]).concat({d:today(),k:"resubmitted"});x.apps[i]=o}}else{o.id=Date.now();o.hist=[{d:today(),k:"submitted"}];x.apps.push(o)}
   try{save(x)}catch{return toast("Storage is full. Use smaller images.")}lform=null;toast("Application submitted");re()}}
 /* staff: review applications */
-const pendApps=d=>(d.apps||[]).filter(a=>a.status==="Pending");
-function appCard(d){const L=pendApps(d);return`<div class="card"><div class="cardh"><h3>License applications · for staff review <span style="color:var(--mu);font-weight:400">· ${L.length}</span></h3></div>${L.length?T(["Applicant","Type","Submitted","Action"],L.map(a=>[`<div class="tn"><span class="av">${esc(ini(a.name))}</span>${esc(a.name)}</div>`,esc(APK[a.kind]),esc(a.date),`<button class="btn sm" data-ap="${a.id}">Review</button>`])):'<div class="empty">No applications waiting for review.</div>'}</div>`}
+const pendApps=d=>(d.apps||[]).filter(a=>a.status==="Pending"||a.status==="Exam passed");
+const appKind=a=>APK[a.kind]+(a.status==="Exam passed"?" · exam passed":"");
+function appCard(d){const L=pendApps(d);return`<div class="card"><div class="cardh"><h3>License applications · for staff review <span style="color:var(--mu);font-weight:400">· ${L.length}</span></h3></div>${L.length?T(["Applicant","Type","Submitted","Action"],L.map(a=>[`<div class="tn"><span class="av">${esc(ini(a.name))}</span>${esc(a.name)}</div>`,esc(appKind(a)),esc(a.date),`<button class="btn sm" data-ap="${a.id}">${a.status==="Exam passed"?"Review &amp; issue":"Review"}</button>`])):'<div class="empty">No applications waiting for review.</div>'}</div>`}
 IC.apps='<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/>';
+const pendReq=d=>(d.records||[]).filter(r=>rstage(r)==="review");
+function reqCard(d){const L=pendReq(d);if(!L.length)return"";const im=(u,t)=>u?`<a href="${u}" target="_blank" title="${t}"><img src="${u}" alt="${t}" style="width:46px;height:46px;object-fit:cover;border-radius:8px;margin-right:6px"></a>`:"";
+ return`<div class="card"><div class="cardh"><h3>Renewal requirements · for staff review <span style="color:var(--mu);font-weight:400">· ${L.length}</span></h3></div><p class="note" style="margin:0 0 12px">Approving the requirements unlocks the renewal exam for the licensee. The license is only renewed after they pass the exam.</p>${T(["License holder","License No.","Submitted","Requirements","Action"],L.map(r=>[`<div class="tn"><span class="av">${esc(ini(r.name))}</span>${esc(r.name)||"Username pending"}</div>`,`<span class="num">${esc(r.licenseNo)||"—"}</span>`,esc((r.renewDocs&&r.renewDocs.date)||""),r.renewDocs?im(r.renewDocs.med,"Medical certificate")+im(r.renewDocs.lic,"License picture")+im(r.renewDocs.r2fa,"Roblox 2FA")+im(r.renewDocs.d2fa,"Discord 2FA"):'<span class="note">None uploaded</span>',`<button class="btn sm" data-qa="${r.id}">Approve requirements</button><button class="btn ghost sm" data-qc="${r.id}">Request changes</button>`]))}</div>`}
+function bindReq(){$$("[data-qa]").forEach(b=>b.onclick=()=>{if(!confirm("Approve these requirements? The licensee will be able to take the renewal exam."))return;const x=load(),r=x.records.find(y=>y.id===+b.dataset.qa);if(r){r.renewStage="exam";r.renewNote="";save(x)}toast("Requirements approved · exam unlocked");admin()});
+ $$("[data-qc]").forEach(b=>b.onclick=()=>{const n=(prompt("Note to the licensee (what must be fixed):")||"").trim();if(!n)return toast("Write a note for the licensee");const x=load(),r=x.records.find(y=>y.id===+b.dataset.qc);if(r){r.renewStage="changes";r.renewNote=n;save(x)}toast("Sent to the licensee");admin()})}
 function appsPanel(){const d=load(),AQ=window._aq||"";
- const rows=q=>{const t=q.trim().toLowerCase();return pendApps(d).filter(a=>!t||[a.name,a.email,APK[a.kind],a.date,a.discord].join(" ").toLowerCase().includes(t)).sort((a,b)=>b.id-a.id)};
- const list=q=>{const L=rows(q);return L.length?T(["Applicant","Type","Submitted","Action"],L.map(a=>[`<div class="tn"><span class="av">${esc(ini(a.name))}</span>${esc(a.name)}</div>`,esc(APK[a.kind]),esc(a.date),`<button class="btn sm" data-ap="${a.id}">Review</button>`])):`<div class="empty">${q.trim()?"No applications match your search.":"No pending applications."}</div>`};
- $("#panel").innerHTML=`<div class="card"><div class="cardh"><h3>License applications <span style="color:var(--mu);font-weight:400">· ${pendApps(d).length} pending</span></h3></div><input class="sq" id="aq" type="search" placeholder="Search name, Gmail, type, Discord…" autocomplete="off" value="${esc(AQ)}"><div id="al">${list(AQ)}</div></div>`;
- bindApps();$("#aq").oninput=e=>{window._aq=e.target.value;$("#al").innerHTML=list(e.target.value);bindApps()}}
+ const rows=q=>{const t=q.trim().toLowerCase();return pendApps(d).filter(a=>!t||[a.name,a.email,appKind(a),a.date,a.discord].join(" ").toLowerCase().includes(t)).sort((a,b)=>b.id-a.id)};
+ const list=q=>{const L=rows(q);return L.length?T(["Applicant","Type","Submitted","Action"],L.map(a=>[`<div class="tn"><span class="av">${esc(ini(a.name))}</span>${esc(a.name)}</div>`,esc(appKind(a)),esc(a.date),`<button class="btn sm" data-ap="${a.id}">${a.status==="Exam passed"?"Review &amp; issue":"Review"}</button>`])):`<div class="empty">${q.trim()?"No applications match your search.":"No pending applications."}</div>`};
+ $("#panel").innerHTML=reqCard(d)+`<div class="card"><div class="cardh"><h3>License applications <span style="color:var(--mu);font-weight:400">· ${pendApps(d).length} pending</span></h3></div><input class="sq" id="aq" type="search" placeholder="Search name, Gmail, type, Discord…" autocomplete="off" value="${esc(AQ)}"><div id="al">${list(AQ)}</div></div>`;
+ bindApps();bindReq();$("#aq").oninput=e=>{window._aq=e.target.value;$("#al").innerHTML=list(e.target.value);bindApps()}}
 function bindApps(){$$("[data-ap]").forEach(b=>b.onclick=()=>appReview(+b.dataset.ap))}
 function appReview(id){const d=load(),a=d.apps.find(x=>x.id===id);if(!a)return;const stu=a.kind==="student",ex=d.records.find(r=>r.email===a.email);
  let no;if(ex&&(ex.type==="Student Permit")===stu&&ex.licenseNo)no=ex.licenseNo;else if(a.kind==="renew"&&LNRE.test(norm(a.prevNo||"")))no=norm(a.prevNo);else no=genNo(stu?"SP":"DL");
  if(d.records.some(r=>r.email!==a.email&&norm(r.licenseNo||"")===norm(no)))no=genNo(stu?"SP":"DL");
- const rec=Object.assign({},ex||{},{id:ex?ex.id:Date.now(),email:a.email,name:a.name,discord:a.discord,age:a.age,sex:a.sex,nat:a.nat,restr:a.restr,photo:a.photo,sig:a.sig,sigc:1,type:stu?"Student Permit":"Non-Professional",licenseNo:no,issued:today(),expiry:addM(today(),VALID_MONTHS),status:"Active"});delete rec.baseStatus;
+ const rec=Object.assign({},ex||{},{id:ex?ex.id:Date.now(),email:a.email,name:a.name,discord:a.discord,age:a.age,sex:a.sex,nat:a.nat,restr:a.restr,photo:a.photo,sig:a.sig,sigc:1,type:stu?"Student Permit":"Non-Professional",licenseNo:no,issued:today(),expiry:addM(today(),VALID_MONTHS),status:"Active"});delete rec.baseStatus;delete rec.renewStage;delete rec.renewNote;
  const m=document.createElement("div");m.className="modal";
- m.innerHTML=`<div class="glass in"><h3 style="margin:0 0 4px">${esc(APK[a.kind])} application</h3><p class="note" style="margin:0 0 12px">${esc(a.email)} · submitted ${esc(a.date)}. The card below is filled in from the applicant’s answers.</p>${eCard(rec)}
+ const reqStage=a.kind==="renew"&&a.status==="Pending",finStage=a.kind==="renew"&&a.status==="Exam passed";
+ m.innerHTML=`<div class="glass in"><h3 style="margin:0 0 4px">${esc(APK[a.kind])} application</h3><p class="note" style="margin:0 0 12px">${esc(a.email)} · submitted ${esc(a.date)}. ${reqStage?"Check the requirements below. Approving them unlocks the renewal exam; the license is not issued yet.":finStage?"Exam passed"+(a.exam?" ("+esc(a.exam.score)+"/"+esc(a.exam.total)+" on "+esc(a.exam.date)+")":"")+". You can now renew and issue the license.":"The card below is filled in from the applicant’s answers."}</p>${eCard(rec)}
  <div class="cardh" style="margin:14px 0 0"><h3 style="font-size:1rem">Applicant details</h3></div><div class="grid"><div class="kv"><small>Sex</small>${esc(a.sex)}</div><div class="kv"><small>Nationality</small>${esc(a.nat)}</div><div class="kv"><small>Discord</small>${esc(a.discord)}</div>${+a.age<18?`<div class="kv"><small>MINOR · PARENTAL CONSENT</small>${a.gok?"Agreed on "+esc(a.gAt||""):"Not given"}</div>`:""}${a.lic?`<div class="kv"><small>Existing license photo</small><a href="${a.lic}" target="_blank"><img src="${a.lic}" alt="" style="width:100%;border-radius:10px"></a></div>`:""}${a.prevNo?`<div class="kv"><small>Previous license no.</small>${esc(a.prevNo)}</div>`:""}${[["r2fa","Roblox 2FA"],["d2fa","Discord 2FA"],["grp","Pending in Roblox group"]].map(q=>a[q[0]]?`<div class="kv"><small>${q[1]}</small><a href="${a[q[0]]}" target="_blank"><img src="${a[q[0]]}" alt="" style="width:100%;border-radius:10px"></a></div>`:"").join("")}<div class="kv"><small>Medical certificate</small><a href="${a.med}" target="_blank"><img src="${a.med}" alt="" style="width:100%;border-radius:10px"></a></div></div>
  <textarea id="an" rows="3" placeholder="Note to the applicant (required to request changes or reject)" style="width:100%;margin-top:12px;border-radius:12px;padding:10px;background:transparent;color:inherit;border:1px solid #8886;font:inherit"></textarea>
- <div class="tools" style="margin-top:14px"><button class="btn" id="aok">Approve &amp; issue</button><button class="btn ghost" id="ach">Request changes</button><button class="btn red" id="arj">Reject</button><button class="btn ghost" id="acl">Close</button></div></div>`;
+ <div class="tools" style="margin-top:14px"><button class="btn" id="aok">${reqStage?"Approve requirements":"Approve &amp; issue"}</button>${finStage?"":'<button class="btn ghost" id="ach">Request changes</button>'}<button class="btn red" id="arj">Reject</button><button class="btn ghost" id="acl">Close</button></div></div>`;
  document.body.appendChild(m);bindFlip(m);m.onclick=e=>{if(e.target===m)m.remove()};$("#acl",m).onclick=()=>m.remove();
  const dec=st=>{const n=$("#an",m).value.trim();if(!n)return toast("Write a note for the applicant");const x=load(),A=x.apps.find(y=>y.id===id);if(!A)return;A.status=st;A.note=n;(A.hist=A.hist||[]).push({d:today(),k:st.toLowerCase()});save(x);m.remove();toast("Sent to the applicant");admin()};
- $("#ach",m).onclick=()=>dec("Changes requested");$("#arj",m).onclick=()=>dec("Rejected");
- $("#aok",m).onclick=()=>{const x=load(),A=x.apps.find(y=>y.id===id);if(!A)return;const i=x.records.findIndex(y=>y.email===A.email);
+ if($("#ach",m))$("#ach",m).onclick=()=>dec("Changes requested");$("#arj",m).onclick=()=>dec("Rejected");
+ $("#aok",m).onclick=()=>{const x=load(),A=x.apps.find(y=>y.id===id);if(!A)return;
+  if(reqStage){A.status="Exam required";A.note="";(A.hist=A.hist||[]).push({d:today(),k:"requirements approved"});save(x);m.remove();toast("Requirements approved · exam unlocked");admin();return}
+  const i=x.records.findIndex(y=>y.email===A.email);
   if(i>=0){const o=x.records[i];if(norm(o.licenseNo||"")!==norm(rec.licenseNo))x.violations.forEach(v=>{if(norm(v.licenseNo||"")===norm(o.licenseNo||""))v.licenseNo=rec.licenseNo});rec.hist=(o.hist||[]).concat({k:A.kind==="renew"?"renew":"issue",d:today()});delete rec.renewOk;rec.id=o.id;x.records[i]=rec}else{rec.hist=[{k:"issue",d:today()}];x.records.push(rec)}
-  if(!x.whitelist.includes(A.email))x.whitelist.push(A.email);A.status="Approved";A.note="";(A.hist=A.hist||[]).push({d:today(),k:"approved"});
+  if(A.kind==="renew")x.violations=x.violations.filter(v=>norm(v.licenseNo||"")!==norm(rec.licenseNo||""));if(!x.whitelist.includes(A.email))x.whitelist.push(A.email);A.status="Approved";A.note="";(A.hist=A.hist||[]).push({d:today(),k:"approved"});
   try{save(x)}catch{return toast("Storage is full. Use smaller images.")}m.remove();toast("Approved · license issued");admin()}}
 /* ===== VEHICLE REGISTRATION ===== */
 const VTYPES=["Private","Government"],VCH="ABCDEFGHJKLMNPRSTUVWXYZ",VCD="0123456789",rA=(s,n)=>Array.from({length:n},()=>s[Math.random()*s.length|0]).join("");
@@ -2030,7 +2069,7 @@ function portal(email){medStop();
  const r=load().records.find(x=>x.email===email),tot=r?dem(r):0,st=standing(tot),nm=((r&&r.name)||email.split("@")[0]);
  const TT={sup:"Support",id:"Digital ID",lic:"Licensing",vio:"Violations",doc:"Documents",pro:"Profile",ren:"Renewal",reg:"Registration",med:"Medical certificate"};
  const stu=r&&r.type==="Student Permit",snote=stu?'<div class="pnote"><b>STUDENT PERMIT</b><br>You may drive only when a companion with a valid driver’s license is seated beside you.</div>':"";
- let body;const canRen=!!r&&!stu&&r.status==="Expired";if(pview==="ren"&&!canRen)pview="lic";
+ let body;const canRen=!!r&&!stu&&r.status==="Expired";const rs=rstage(r);if(pview==="ren"&&!canRen&&!rmode)pview="lic";
  if(pview==="home"||!TT[pview]){pview="home";
   const sc=r&&(STC[r.status]||STC.Pending);
   body=`<div class="plogoW"><img class="plogo" src="${LOGO}" alt=""></div>
@@ -2044,12 +2083,13 @@ function portal(email){medStop();
    if(pview==="id")c=`${eCard(r)}<button class="btn full" id="pdl" style="margin-bottom:14px">Download license</button>${snote}`;
    if(pview==="lic")c=`<button class="pfeat" id="linfo" aria-expanded="false"><span class="pico">${ico("cert",44,2.2)}</span><span class="tx"><b>LICENSE INFORMATION</b><small>Tap to view your ${stu?"permit":"license"} details</small></span><span class="chev">${ico("chev",22,4)}</span></button>
     <div class="lfw" id="lbody"><div class="lfi" style="padding-top:12px">${snote}<div class="pcard"><div class="prow2"><div><small>${stu?"PERMIT":"LICENSE"} NO.</small><div class="num">${esc(r.licenseNo)||"—"}</div></div><span class="pill ${esc(r.status)}">${esc(r.status)}</span></div>${details(r)}</div></div></div>
-    <button class="btn full" id="prenew" ${canRen?"":"disabled"} style="margin-top:14px;${canRen?"":"opacity:.45;cursor:not-allowed"}">Renew</button><p class="note" style="text-align:center;margin:8px 0 0">${canRen?"Your license has expired. You can renew it now.":stu?"Student permits cannot be renewed.":"Renewal opens once your license has expired."}</p>`;
+    <button class="btn full" id="prenew" ${canRen&&(!rs||rs==="changes")?"":"disabled"} style="margin-top:14px;${canRen&&(!rs||rs==="changes")?"":"opacity:.45;cursor:not-allowed"}">${rs==="changes"?"Resubmit requirements":"Renew"}</button><p class="note" style="text-align:center;margin:8px 0 0">${canRen?(rs==="review"?"Your requirements are waiting for staff approval.":rs==="exam"?"Your requirements were approved. Take the renewal exam above.":rs==="ok"?"You passed the exam. Staff will complete your renewal.":rs==="changes"?"Staff asked for changes. Resubmit your requirements.":"Your license has expired. Submit your requirements to start the renewal."):stu?"Student permits cannot be renewed.":"Renewal opens once your license has expired."}</p>`;
    if(pview==="ren")c=renHTML(r);
    if(pview==="vio")c=`<div class="pcard"><div class="cardh"><h3>Demerit points</h3><span class="pill ${st.c}">${tot} pts · ${st.l}</span></div>${meter(tot)}${tlist(r)}</div><a class="btn full settle" href="${SETTLE_URL}" target="_blank" rel="noopener noreferrer">Settle violation</a><p class="note" style="text-align:center;margin:10px 0 0">Opens the T.O Discord settle-violation channel.</p>`;
    if(pview==="doc")c=`<div class="pdoc"><span class="pico">${ico("license",30,2.4)}</span><div><b>${stu?"Student permit":"Driver’s license"} (image)</b><small>PNG of the front and back</small></div><button class="btn sm" id="pdl">Download</button></div>
     <div class="pdoc"><span class="pico">${ico("file",30,2.4)}</span><div><b>Driving record</b><small>Details and violations (text file)</small></div><button class="btn sm" id="prec">Download</button></div>`;
    if(pview==="pro")c=`<div class="pav">${r.photo?`<img src="${r.photo}" alt="">`:esc(ini(r.name))}</div><div class="pcard"><div class="grid">${[["Roblox username",r.name],["Discord",r.discord],["Gmail",r.email],["Age",r.age],["Sex",r.sex],["Nationality",r.nat],[stu?"Permit no.":"License no.",r.licenseNo],["Type",r.type]].map(x=>`<div class="kv"><small>${x[0]}</small>${esc(x[1])||"—"}</div>`).join("")}</div></div><button class="btn ghost full" id="out2">Log out</button>`}
+  if(pview==="ren"&&!r)c=renHTML(null);
   if(pview==="reg")c=regHTML(r,email);
   if(pview==="med")c=medHTML(r,email);
   if(pview==="doc")c=(r?c:"")+'<div id="medDocs"></div>';
@@ -2062,10 +2102,10 @@ function portal(email){medStop();
  <div class="pmain"><div class="ppanel">${body}<div class="pmid"><img src="${LOGO}" alt=""><div><b>TRANSPORTATION OFFICE</b><span>LICENSING MANAGEMENT SYSTEM</span></div></div></div></div>
  <footer class="pbar"><a class="fpl" role="button" tabindex="0" data-legal="privacy">Privacy</a> · <a class="fpl" role="button" tabindex="0" data-legal="terms">Terms</a> · RELEASE 1.0 · BY <b>FRANXZZZZ</b></footer></div>`);
  bindOut();bindFlip(document);if(pview==="sup")bindSup(email);
- $$("[data-go]").forEach(b=>b.onclick=()=>{if(pview==="ren"&&rstep==="quiz"&&!confirm("Leave the test? Your progress will be lost."))return;if(pview==="ren"){rstep="docs";qz=null}if(b.dataset.go!=="lic")lform=null;if(b.dataset.go==="med"&&pview!=="med")medv="menu";if(b.dataset.go!=="reg"){rf=null;rsel=null}pview=b.dataset.go;portal(email);window.scrollTo(0,0)});
+ $$("[data-go]").forEach(b=>b.onclick=()=>{if(pview==="ren"&&rstep==="quiz"&&!confirm("Leave the test? Your progress will be lost."))return;if(pview==="ren"){rstep="docs";qz=null;rmode=null}if(b.dataset.go!=="lic")lform=null;if(b.dataset.go==="med"&&pview!=="med")medv="menu";if(b.dataset.go!=="reg"){rf=null;rsel=null}pview=b.dataset.go;portal(email);window.scrollTo(0,0)});
  const li=$("#linfo");if(li)li.onclick=()=>{const o=$("#lbody").classList.toggle("open");li.setAttribute("aria-expanded",o)};
- const pr=$("#prenew");if(pr)pr.onclick=()=>{pview="ren";rstep="docs";rdocs={med:null,lic:null,r2fa:null,d2fa:null};qz=null;portal(email);window.scrollTo(0,0)};
- if(pview==="ren"&&r)bindRen(email);
+ const pr=$("#prenew");if(pr)pr.onclick=()=>{pview="ren";rmode=null;rstep="docs";rdocs={med:null,lic:null,r2fa:null,d2fa:null};qz=null;portal(email);window.scrollTo(0,0)};
+ if(pview==="ren")bindRen(email);
  if(pview==="lic")bindLic(email,r);
  if(pview==="reg")bindReg(email,r);
  if(pview==="med")bindMed(email,r);
