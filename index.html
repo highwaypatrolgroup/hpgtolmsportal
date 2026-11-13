@@ -303,6 +303,11 @@ a.btn{display:block;text-align:center;text-decoration:none;box-sizing:border-box
 @media(max-width:820px){.nav{overflow-x:auto;scrollbar-width:none}.nav::-webkit-scrollbar{display:none}.nav button{flex:1 0 auto;min-width:58px}}
 
 /* ===== support / chat ===== */
+select.sq{appearance:auto;color-scheme:dark}select.sq option{color:#111;background:#fff}
+.rpi{width:100%;text-align:left;display:flex;gap:10px;align-items:center;padding:13px 14px;margin-bottom:10px;border:1px solid #ffffff22;border-radius:16px;background:linear-gradient(160deg,#ffffff14,#ffffff07);color:inherit;font:inherit;cursor:pointer}
+.rpi .rx{flex:1;min-width:0}.rpi b{display:block;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rpi small{display:block;color:#b8c9f5;font-size:.74rem;margin-top:3px}
+.rpb{display:inline-block;padding:3px 10px;border-radius:99px;font-size:.7rem;font-weight:700;color:#fff;white-space:nowrap}
+.rb-open{background:#d97706}.rb-inreview{background:#2563eb}.rb-resolved{background:#16a34a}.rb-closed{background:#6b7280}
 .stabs{display:flex;gap:6px;width:100%;padding:5px;margin-bottom:14px;border-radius:99px;background:#ffffff12;border:1px solid #ffffff22}
 .stabs button{flex:1;border:0;background:none;color:#cfdcff;padding:10px 6px;border-radius:99px;font:inherit;font-weight:700;font-size:.85rem;cursor:pointer}
 .stabs button.on{background:linear-gradient(135deg,var(--g1),var(--g2));color:#1b1405}
@@ -737,7 +742,7 @@ IC.exam='<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9
 IC.db='<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.700 3.600 3 8 3s8-1.300 8-3V5M4 12c0 1.700 3.600 3 8 3s8-1.300 8-3"/>';
 IC.avi='<path d="M2 14l8-3V5a2 2 0 014 0v6l8 3v2l-8-1.5V19l2 1.5V22l-4-1-4 1v-1.5L10 19v-4.5L2 16z"/>';
 const svg=k=>`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${IC[k]}</svg>`;
-const NAV=[["dash","Dashboard","Dashboard"],["add","Add","Add license"],["list","Licenses","Licenses"],["avi","Aviation","Aviation Unit"],["viol","Violations","Violations"],["apps","Applications","License applications"],["reg","Vehicles","Vehicle registrations"],["exam","Exam","Renewal exam"],["sup","Support","Support chat"],["gen","Generator","License number generator"],["db","Accounts","Licensee account database"],["audit","Audit logs","Audit logs"],["cfg","Settings","Settings"]];
+const NAV=[["dash","Dashboard","Dashboard"],["add","Add","Add license"],["list","Licenses","Licenses"],["avi","Aviation","Aviation Unit"],["viol","Violations","Violations"],["apps","Applications","License applications"],["reg","Vehicles","Vehicle registrations"],["exam","Exam","Renewal exam"],["sup","Support","Support & reports"],["gen","Generator","License number generator"],["db","Accounts","Licensee account database"],["audit","Audit logs","Audit logs"],["cfg","Settings","Settings"]];
 function togTheme(){const t=document.documentElement.dataset.theme==="dark"?"light":"dark";document.documentElement.dataset.theme=t;sset("localStorage","to_theme",t)}
 const GRP={dash:"STAFF",add:"STAFF",list:"STAFF",avi:"STAFF",exam:"STAFF",apps:"STAFF",reg:"STAFF",sup:"STAFF",gen:"STAFF",viol:"PERSONNEL",db:"ADMINISTRATOR",audit:"ADMINISTRATOR",cfg:"ADMINISTRATOR"},GO=["STAFF","PERSONNEL","ADMINISTRATOR"];
 const NAVS=()=>[...NAV].sort((a,b)=>GO.indexOf(GRP[a[0]])-GO.indexOf(GRP[b[0]]));
@@ -1555,6 +1560,7 @@ const FAQ=[
 ["What do the status labels mean?","Active: valid and in good standing. Pending: still being verified by staff. Alarmed: flagged for review. Suspended: temporarily not allowed to drive. Revoked: license cancelled. Expired: past the expiry date and needs renewal."],
 ["How do demerit points work?","Each violation adds points. 0-5 points is Good standing, 6-11 is a Warning, and 12 or more triggers a Suspension review. Points are cleared when your license is renewed."],
 ["What is a citation ticket?","When staff record a violation, they issue you a citation ticket with a ticket number, the date, place and details of the violation. You can view and download it under VIOLATIONS in your portal."],
+["How do I report a concern about the Transportation Office?","Open SUPPORT, then the Reports tab, and tap New report. Choose a category, describe what happened and submit. Staff review every report ticket and reply inside the ticket, and you can follow its status there. Please use Reports instead of the chat for anything concerning the T.O."],
 ["How do I settle a violation?","Open VIOLATIONS and tap Settle violation. It opens the Transportation Office Discord settle-violation channel where staff will assist you."],
 ["What do license codes A and B mean?","Code A allows you to drive a Motorcycle. Code B allows you to drive Cars. Your codes are shown on the back of your Digital ID."],
 ["What can I do with a Student Permit?","You may drive only when a companion holding a valid driver’s license is seated beside you. Upgrade to a full license before your permit expires."],
@@ -1566,23 +1572,106 @@ const FAQ=[
 ];
 const faqOf=d=>d&&d.faq&&d.faq.length?d.faq:FAQ;
 const chatOf=(d,e)=>d.chats[e]||(d.chats[e]={email:e,msgs:[],sr:0,ur:0});
-const supUnread=d=>Object.values(d.chats||{}).filter(t=>t.msgs.some(m=>m.f==="u"&&m.ts>t.sr)).length;
-const supUnreadU=(d,e)=>{const t=(d.chats||{})[e];return t?t.msgs.filter(m=>m.f==="s"&&m.ts>t.ur).length:0};
+const supUnread=d=>Object.values(d.chats||{}).filter(t=>t.msgs.some(m=>m.f==="u"&&m.ts>t.sr)).length+(rptOK()?rpAll(d).filter(rpUS).length:0);
+const supChatU=(d,e)=>{const t=(d.chats||{})[e];return t?t.msgs.filter(m=>m.f==="s"&&m.ts>t.ur).length:0};
+const supUnreadU=(d,e)=>supChatU(d,e)+rpUnreadU(d,e);
 function supMark(e){const d=load(),t=d.chats[e];if(t&&t.msgs.some(m=>m.f==="u"&&m.ts>t.sr)){t.sr=Date.now();save(d)}}
 const bubbles=(ms,v)=>ms.length?ms.map(m=>`<div class="cb ${m.f===v?"me":"them"}">${esc(m.t)}<small>${m.f!==v&&m.f==="s"?esc(m.by||"Staff")+" · ":""}${new Date(m.ts).toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}</small></div>`).join(""):'<div class="cempty">No messages yet.<br>Type your question below and staff will reply here.</div>';
 const toBottom=()=>{const c=$("#cb");if(c)c.scrollTop=c.scrollHeight};
 const autoGrow=t=>{t.oninput=()=>{t.style.height="auto";t.style.height=Math.min(120,t.scrollHeight)+"px"}};
 let supTab="faq",stSel=null;
 
+/* ===== REPORT TICKETS (Support > Reports) =====
+   A licensee opens a ticket for anything concerning the T.O. Tickets live inside the licensee's own chat document
+   (chats/<email>, field "rp"), so no new Firestore collection or security rules are needed. */
+const RCATS=["Staff conduct","Citation or violation dispute","License or record error","Vehicle registration issue","Exam or renewal issue","Abuse of authority","Other concern about the T.O"];
+const RSTAT=["Open","In review","Resolved","Closed"];
+const RPT_ALL_STAFF=true; /* true: all staff + admin handle reports. false: only the administrator sees them */
+const RPT_MAX_OPEN=5;     /* max open tickets per licensee */
+const rptOK=()=>RPT_ALL_STAFF||(sess()||{}).role==="admin";
+const rpAll=d=>{const o=[];Object.values(d.chats||{}).forEach(t=>(t.rp||[]).forEach(r=>o.push(Object.assign({},r,{em:t.email||""}))));return o.sort((a,b)=>(b.upd||0)-(a.upd||0))};
+const rpUS=r=>(r.msgs||[]).some(m=>m.f==="u"&&m.ts>(r.sr||0));
+const rpUL=r=>(r.msgs||[]).some(m=>m.f==="s"&&m.ts>(r.ur||0));
+const rpUnreadU=(d,e)=>(((d.chats||{})[e]||{}).rp||[]).filter(rpUL).length;
+const rpb=s=>`<span class="rpb rb-${String(s).toLowerCase().replace(/\s+/g,"")}">${esc(s)}</span>`;
+const rpFmt=ts=>new Date(ts).toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"});
+const sstabs=c=>{const n=rptOK()?rpAll(load()).filter(rpUS).length:0,b=(k,l,x)=>`<button data-sst="${k}" class="${c===k?"on":""}">${l}${x?` <em class="bdg">${x}</em>`:""}</button>`;return`<div class="stabs">${b("chat","Messages")}${rptOK()?b("rpt","Reports",n):""}${b("faq","Edit FAQs")}</div>`};
+let rpView=null,rpFilter="active",rpSt=null;
+
+function rptLic(email,d){
+ const L=(((d.chats||{})[email]||{}).rp||[]).slice().sort((a,b)=>(b.upd||0)-(a.upd||0));
+ if(rpView==="new")return`<div class="pcard"><div class="cardh"><h3>New report</h3></div><p class="note" style="margin:0 0 12px;line-height:1.5">Use this for anything you want to report about the Transportation Office. Staff will review it and reply inside the ticket. Never include your password.</p>
+ <label class="note" for="rp_c">Category</label><select class="sq" id="rp_c"><option value="">Select a category…</option>${RCATS.map(c=>`<option>${esc(c)}</option>`).join("")}</select>
+ <label class="note" for="rp_s">Subject</label><input class="sq" id="rp_s" maxlength="80" placeholder="Short summary of your report" autocomplete="off">
+ <label class="note" for="rp_t">What happened?</label><textarea class="ta" id="rp_t" rows="6" maxlength="1500" style="min-height:130px;resize:vertical;margin-bottom:12px" placeholder="Describe what happened, when and where. Include any ticket or license numbers that apply."></textarea>
+ <label class="note" for="rp_d">Date it happened (optional)</label><input class="sq" id="rp_d" type="date" max="${today()}">
+ <label class="note" for="rp_w">Staff member or person involved (optional)</label><input class="sq" id="rp_w" maxlength="80" placeholder="Name or Roblox username" autocomplete="off">
+ <div class="cin" style="margin-top:4px"><button class="btn" id="rp_go" style="flex:1">Submit report</button><button class="btn ghost" id="rp_x" style="flex:1">Cancel</button></div></div>`;
+ const t=rpView&&L.find(r=>r.id===rpView);
+ if(t){const closed=t.st==="Closed";
+  return`<div class="pcard"><button class="btn ghost sm" id="rp_b">‹ All reports</button>
+  <div style="margin:12px 0 4px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="num">${esc(t.no)}</span>${rpb(t.st)}</div>
+  <b style="display:block">${esc(t.subj)}</b><small class="note" style="display:block;margin:4px 0 10px;line-height:1.5">${esc(t.cat)} · Filed ${rpFmt(t.ts)}${t.date?" · Happened "+esc(t.date):""}${t.who?" · Concerning: "+esc(t.who):""}</small>
+  <div class="chatbox" id="cb">${bubbles(t.msgs,"u")}</div>
+  ${closed?'<p class="note" style="text-align:center;margin:12px 0 0;line-height:1.5">This ticket is closed. If you still have a concern, open a new report.</p>':'<div class="cin"><textarea id="rp_m" rows="1" maxlength="1000" placeholder="Add a reply…"></textarea><button class="btn" id="rp_snd">Send</button></div><p class="note" style="text-align:center;margin-top:10px">Staff will reply here. You can follow the status above.</p>'}</div>`}
+ return`<button class="btn full" id="rp_n" style="margin-bottom:12px">+ New report</button>`+(L.length?L.map(r=>`<button class="rpi" data-rp="${esc(r.id)}"><span class="rx"><b>${esc(r.subj)}</b><small>${esc(r.no)} · ${esc(r.cat)} · ${rpFmt(r.upd||r.ts)}</small></span>${rpUL(r)?'<i class="udot"></i>':""}${rpb(r.st)}</button>`).join(""):'<div class="cempty">No reports yet.<br>If you have a concern about the T.O, open a report ticket and staff will reply here.</div>')+'<p class="note" style="text-align:center;margin-top:12px;line-height:1.5">Reports about the Transportation Office must be filed as a ticket so they can be tracked.</p>'}
+
+function bindRptLic(email){
+ const go=()=>portal(email),mine=x=>((x.chats[email]||{}).rp||[]),openN=x=>mine(x).filter(r=>r.st==="Open"||r.st==="In review").length;
+ const n=$("#rp_n");if(n)n.onclick=()=>{const k=openN(load());if(k>=RPT_MAX_OPEN)return toast("You already have "+k+" open reports. Please wait for staff to resolve them.");rpView="new";go()};
+ $$("[data-rp]").forEach(b=>b.onclick=()=>{rpView=b.dataset.rp;go()});
+ [$("#rp_b"),$("#rp_x")].forEach(b=>{if(b)b.onclick=()=>{rpView=null;go()}});
+ const g=$("#rp_go");if(g)g.onclick=()=>{const cat=$("#rp_c").value,subj=$("#rp_s").value.trim(),det=$("#rp_t").value.trim();
+  if(!cat)return toast("Choose a category");if(subj.length<5)return toast("Add a short subject (at least 5 characters)");if(det.length<20)return toast("Describe what happened (at least 20 characters)");
+  const x=load();if(openN(x)>=RPT_MAX_OPEN)return toast("You already have too many open reports.");
+  const c=chatOf(x,email);c.rp=c.rp||[];const now=Date.now(),id="r"+now;
+  c.rp.push({id:id,no:"RPT-"+now.toString(36).toUpperCase().slice(-6),cat:cat,subj:subj,date:$("#rp_d").value,who:$("#rp_w").value.trim(),st:"Open",ts:now,upd:now,sr:0,ur:now,msgs:[{id:now,f:"u",t:det,ts:now}]});
+  save(x);rpView=id;toast("Report submitted. Staff will reply here.");go()};
+ if(!rpView||rpView==="new")return;
+ {const x=load(),t=mine(x).find(r=>r.id===rpView);if(t&&rpUL(t)){t.ur=Date.now();save(x)}}
+ toBottom();const m=$("#rp_m");if(!m)return;autoGrow(m);
+ const send=()=>{const v=m.value.trim();if(!v)return;const x=load(),t=mine(x).find(r=>r.id===rpView);if(!t||t.st==="Closed")return;const now=Date.now();t.msgs.push({id:now,f:"u",t:v,ts:now});t.upd=now;if(t.st==="Resolved")t.st="Open";save(x);go();const q=$("#rp_m");if(q)q.focus();toBottom()};
+ $("#rp_snd").onclick=send;m.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}}}
+
+function rptStaff(){
+ const own=(sess()||{}).role==="admin";
+ if(rpSt){const[em,id]=rpSt.split("|"),x=load(),t=(((x.chats[em]||{}).rp)||[]).find(r=>r.id===id);if(t&&rpUS(t)){t.sr=Date.now();save(x)}}
+ const d=load(),all=rpAll(d),key=r=>r.em+"|"+r.id,F=rpFilter;
+ const nm=e=>{const r=d.records.find(x=>x.email===e);return(r&&r.name)||String(e).split("@")[0]};
+ const L=all.filter(r=>F==="all"||(F==="active"?(r.st==="Open"||r.st==="In review"):r.st===F));
+ if(rpSt&&!all.some(r=>key(r)===rpSt))rpSt=null;
+ const sel=rpSt?all.find(r=>key(r)===rpSt):null;
+ const list=L.length?L.map(r=>`<button class="sth ${key(r)===rpSt?"on":""}" data-rt="${esc(key(r))}"><span class="av">${esc(ini(nm(r.em)))}</span><span class="stx"><b>${esc(r.subj)}</b><small>${esc(r.no+" · "+nm(r.em)+" · "+r.st)}</small></span>${rpUS(r)?'<i class="udot"></i>':""}</button>`).join(""):'<div class="empty">No report tickets here.</div>';
+ const conv=sel?`<div class="sch"><button class="btn ghost sm sbk" id="rsb">‹ Back</button><div><b>${esc(sel.no)}</b> ${rpb(sel.st)}<small style="display:block;color:var(--mu)">${esc(nm(sel.em))} · ${esc(sel.em)}</small></div><div class="sp"></div>${own?'<button class="btn red sm" id="rdel">Delete</button>':""}</div>
+ <div style="margin:0 0 10px;font-size:.88rem;line-height:1.5"><b>${esc(sel.subj)}</b><br><span style="color:var(--mu)">${esc(sel.cat)} · Filed ${rpFmt(sel.ts)}${sel.date?" · Happened "+esc(sel.date):""}${sel.who?" · Concerning: "+esc(sel.who):""}</span></div>
+ <div class="tools" style="margin:0 0 10px"><span class="note" style="align-self:center;margin:0">Status</span>${RSTAT.map(s=>`<button class="btn ${sel.st===s?"":"ghost"} sm" data-rs="${s}">${s}</button>`).join("")}</div>
+ <div class="chatbox" id="cb">${bubbles(sel.msgs,"s")}</div><div class="cin"><textarea id="rsm" rows="1" maxlength="1000" placeholder="Write a reply…"></textarea><button class="btn" id="rss">Send</button></div>`:'<div class="empty">Select a report ticket to read and reply.</div>';
+ const fb=[["active","Active"],["Open","Open"],["In review","In review"],["Resolved","Resolved"],["Closed","Closed"],["all","All"]];
+ P(sstabs("rpt")+`<div class="cardh"><h3>Report tickets <span style="color:var(--mu);font-weight:400">· ${L.length}</span></h3></div><div class="tools" style="margin:0 0 12px">${fb.map(f=>`<button class="btn ${F===f[0]?"":"ghost"} sm" data-rf="${f[0]}">${f[1]}</button>`).join("")}</div><div class="sgrid ${sel?"sel":""}"><div class="slist">${list}</div><div class="sconv">${conv}</div></div>`);
+ $$("[data-sst]").forEach(b=>b.onclick=()=>{supStaff=b.dataset.sst;faqDraft=null;supportPanel()});
+ $$("[data-rf]").forEach(b=>b.onclick=()=>{rpFilter=b.dataset.rf;rpSt=null;supportPanel()});
+ $$("[data-rt]").forEach(b=>b.onclick=()=>{rpSt=b.dataset.rt;admin()});
+ if(!sel)return;
+ toBottom();const m=$("#rsm");autoGrow(m);
+ $("#rsb").onclick=()=>{rpSt=null;admin()};
+ const upd=fn=>{const[em,id]=rpSt.split("|"),x=load(),t=(((x.chats[em]||{}).rp)||[]).find(r=>r.id===id);if(!t)return;fn(t,Date.now());save(x);admin()},by=own?"Administrator":"Staff";
+ $$("[data-rs]").forEach(b=>b.onclick=()=>{const st=b.dataset.rs;if(st===sel.st)return;upd((t,now)=>{t.st=st;t.upd=now;t.sr=now;t.msgs.push({id:now,f:"s",t:"Status changed to "+st,ts:now,by:by})});try{logAudit("Report status: "+st,sel.no,sel.em)}catch{}});
+ const send=()=>{const v=m.value.trim();if(!v)return;upd((t,now)=>{t.msgs.push({id:now,f:"s",t:v,ts:now,by:by});t.upd=now;t.sr=now;if(t.st==="Open")t.st="In review"});const q=$("#rsm");if(q)q.focus();toBottom()};
+ $("#rss").onclick=send;m.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}};
+ const dl=$("#rdel");if(dl)dl.onclick=()=>{if(!confirm("Delete this report ticket permanently?"))return;const[em,id]=rpSt.split("|"),x=load(),c=x.chats[em];if(c)c.rp=(c.rp||[]).filter(r=>r.id!==id);save(x);try{logAudit("Deleted report",sel.no,sel.em)}catch{}rpSt=null;toast("Report deleted");admin()}}
+
+
 function supHTML(email){
- const d=load(),uu=supUnreadU(d,email),t=d.chats[email];
- const tabs=`<div class="stabs"><button data-st="faq" class="${supTab==="faq"?"on":""}">FAQs</button><button data-st="chat" class="${supTab==="chat"?"on":""}">Chat with staff${uu?` <em class="bdg">${uu}</em>`:""}</button></div>`;
+ const d=load(),uu=supChatU(d,email),ru=rpUnreadU(d,email),t=d.chats[email];
+ const tabs=`<div class="stabs"><button data-st="faq" class="${supTab==="faq"?"on":""}">FAQs</button><button data-st="chat" class="${supTab==="chat"?"on":""}">Chat with staff${uu?` <em class="bdg">${uu}</em>`:""}</button><button data-st="rpt" class="${supTab==="rpt"?"on":""}">Reports${ru?` <em class="bdg">${ru}</em>`:""}</button></div>`;
+ if(supTab==="rpt")return tabs+rptLic(email,d);
  if(supTab==="faq")return tabs+`<input class="sq" id="sq" type="search" placeholder="Search questions…" autocomplete="off"><div id="fl">${faqOf(d).map(f=>`<details class="faq"><summary>${esc(f[0])}</summary><p>${esc(f[1])}</p></details>`).join("")}</div><div class="empty" id="fe" style="display:none;color:#cfdcff">No matching questions. Try chatting with staff.</div><button class="btn full" data-st="chat" style="margin-top:6px">Can’t find your answer? Chat with staff</button>`;
- return tabs+`<div class="chatbox" id="cb">${bubbles(t?t.msgs:[],"u")}</div><div class="cin"><textarea id="cm" rows="1" maxlength="1000" placeholder="Type your message…"></textarea><button class="btn" id="cs">Send</button></div><p class="note" style="text-align:center;margin-top:10px">Staff will reply here as soon as they’re available.</p>`}
+ return tabs+`<p class="note" style="margin:0 0 10px;line-height:1.5">Want to report something about the T.O (staff conduct, a citation, a record error)? <a class="fpl" role="button" tabindex="0" data-st="rpt">Open a report ticket</a> instead.</p><div class="chatbox" id="cb">${bubbles(t?t.msgs:[],"u")}</div><div class="cin"><textarea id="cm" rows="1" maxlength="1000" placeholder="Type your message…"></textarea><button class="btn" id="cs">Send</button></div><p class="note" style="text-align:center;margin-top:10px">Staff will reply here as soon as they’re available.</p>`}
 
 function bindSup(email){
- $$("[data-st]").forEach(b=>b.onclick=()=>{supTab=b.dataset.st;portal(email)});
+ $$("[data-st]").forEach(b=>b.onclick=()=>{supTab=b.dataset.st;if(supTab==="rpt")rpView=null;portal(email)});
  const q=$("#sq");if(q)q.oninput=()=>{const v=q.value.toLowerCase().trim();let n=0;$$("#fl details").forEach(x=>{const ok=x.textContent.toLowerCase().includes(v);x.style.display=ok?"":"none";if(ok)n++});$("#fe").style.display=n?"none":"block"};
+ if(supTab==="rpt")return bindRptLic(email);
  if(supTab!=="chat")return;
  const d=load(),t=d.chats[email];if(t&&t.msgs.some(m=>m.f==="s"&&m.ts>t.ur)){t.ur=Date.now();save(d)}
  toBottom();const m=$("#cm");autoGrow(m);
@@ -1592,7 +1681,7 @@ function bindSup(email){
 let supStaff="chat",faqDraft=null;
 function faqEditor(){
  const d=load();if(!faqDraft)faqDraft=faqOf(d).map(f=>[f[0],f[1]]);
- const tabs=`<div class="stabs"><button data-sst="chat">Messages</button><button data-sst="faq" class="on">Edit FAQs</button></div>`;
+ const tabs=sstabs("faq");
  P(tabs+`<p class="note" style="margin:0 0 14px">These are the questions licensees see under Support &gt; FAQs. Changes apply to everyone as soon as you tap Save.</p>`+
   faqDraft.map((f,i)=>`<div class="pcard" style="margin-bottom:12px"><div class="fld"><textarea id="fq${i}" rows="2" placeholder=" " style="width:100%;resize:vertical">${esc(f[0])}</textarea><label for="fq${i}">Question ${i+1}</label></div><div class="fld" style="margin-top:10px"><textarea id="fa${i}" rows="4" placeholder=" " style="width:100%;resize:vertical">${esc(f[1])}</textarea><label for="fa${i}">Answer</label></div><div class="tools" style="margin:8px 0 0"><button class="btn ghost sm" data-fu="${i}">↑</button><button class="btn ghost sm" data-fd="${i}">↓</button><button class="btn red sm" data-fx="${i}">Delete</button></div></div>`).join("")+
   `<div class="tools"><button class="btn ghost" id="fadd">+ Add question</button><button class="btn" id="fsave">Save FAQs</button><button class="btn ghost" id="frst">Restore defaults</button></div>`);
@@ -1606,6 +1695,7 @@ function faqEditor(){
  $("#frst").onclick=()=>{if(!confirm("Replace all FAQs with the original default list?"))return;const x=load();delete x.faq;save(x);faqDraft=null;toast("Default FAQs restored");faqEditor()}}
 function supportPanel(){
  if(supStaff==="faq")return faqEditor();
+ if(supStaff==="rpt"&&rptOK())return rptStaff();
  const d=load(),own=(sess()||{}).role==="admin";
  const lastTs=t=>t.msgs.length?t.msgs[t.msgs.length-1].ts:0;
  const T=Object.values(d.chats).filter(t=>t.msgs.length).sort((a,b)=>lastTs(b)-lastTs(a));
@@ -1613,7 +1703,7 @@ function supportPanel(){
  const gm=e=>(d.chats[e]&&d.chats[e].gm)||e,nm=e=>{const r=d.records.find(x=>x.email===gm(e));return(r&&r.name)||gm(e).split("@")[0]};
  const list=T.length?T.map(t=>{const u=t.msgs.some(m=>m.f==="u"&&m.ts>t.sr),l=t.msgs[t.msgs.length-1];return`<button class="sth ${t.email===stSel?"on":""}" data-th="${esc(t.email)}"><span class="av">${esc(ini(nm(t.email)))}</span><span class="stx"><b>${esc(nm(t.email))}</b><small>${esc((l.f==="s"?"You: ":"")+l.t)}</small></span>${u?'<i class="udot"></i>':""}</button>`}).join(""):'<div class="empty">No conversations yet.</div>';
  const conv=stSel?`<div class="sch"><button class="btn ghost sm sbk" id="sbk">‹ Back</button><div><b>${esc(nm(stSel))}</b><small style="display:block;color:var(--mu)">${esc(gm(stSel))}${d.chats[stSel].gm?" · login help request (not logged in)":""}</small></div><div class="sp"></div><button class="btn ghost sm" id="spw">Send reset link</button><button class="btn red sm" id="sdel">Delete</button></div><div class="chatbox" id="cb">${bubbles(d.chats[stSel].msgs,"s")}</div><div class="cin"><textarea id="sm" rows="1" maxlength="1000" placeholder="Write a reply…"></textarea><button class="btn" id="ss">Send</button></div>`:'<div class="empty">Select a conversation to reply.</div>';
- P(`<div class="stabs"><button data-sst="chat" class="on">Messages</button><button data-sst="faq">Edit FAQs</button></div><div class="cardh"><h3>Licensee messages <span style="color:var(--mu);font-weight:400">· ${T.length}</span></h3></div><div class="sgrid ${stSel?"sel":""}"><div class="slist">${list}</div><div class="sconv">${conv}</div></div>`);
+ P(sstabs("chat")+`<div class="cardh"><h3>Licensee messages <span style="color:var(--mu);font-weight:400">· ${T.length}</span></h3></div><div class="sgrid ${stSel?"sel":""}"><div class="slist">${list}</div><div class="sconv">${conv}</div></div>`);
  $$("[data-sst]").forEach(b=>b.onclick=()=>{supStaff=b.dataset.sst;faqDraft=null;supportPanel()});
  $$("[data-th]").forEach(b=>b.onclick=()=>{stSel=b.dataset.th;admin()});
  if(!stSel)return;
@@ -1621,7 +1711,7 @@ function supportPanel(){
  $("#sbk").onclick=()=>{stSel=null;admin()};
  const send=()=>{const v=m.value.trim();if(!v)return;const x=load();chatOf(x,stSel).msgs.push({id:Date.now(),f:"s",t:v,ts:Date.now(),by:own?"Administrator":"Staff"});save(x);admin();const n=$("#sm");if(n)n.focus();toBottom()};
  $("#ss").onclick=send;m.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send()}};
- $("#sdel").onclick=()=>{if(!confirm("Delete this whole conversation?"))return;const x=load();delete x.chats[stSel];save(x);stSel=null;toast("Conversation deleted");admin()};
+ $("#sdel").onclick=()=>{if(!confirm("Delete this whole conversation?"))return;const x=load(),c0=x.chats[stSel];if(c0&&(c0.rp||[]).length){c0.msgs=[];c0.sr=c0.ur=Date.now()}else delete x.chats[stSel];save(x);stSel=null;toast("Conversation deleted");admin()};
  $("#spw").onclick=async()=>{const e=gm(stSel);if(!e||!isGmail(e))return toast("No Gmail address on this chat.");if(!confirm("Email a password reset link to "+e+"?"))return;try{await AUTH.sendPasswordResetEmail(e);toast("Reset link sent to "+e)}catch{toast("Could not send reset link")}}}
 
 /* ===== FORGOT PASSWORD (login screen) ===== */
@@ -1646,7 +1736,8 @@ window.onRemote=()=>{const s=sess();if(!s){const g=gGet();if($("#gm")&&$("#gx")&
  if(s.role==="licensee"&&pview==="vio"&&!$("#gm")){portal(s.email)}
  else if(s.role==="licensee"&&pview==="reg"&&!rf)portal(s.email);
  else if(s.role==="licensee"&&pview==="sup"&&supTab==="chat"){const v=($("#cm")||{}).value;portal(s.email);const m=$("#cm");if(m&&v)m.value=v}
- else if(s.role!=="licensee"&&tab==="sup"){const v=($("#sm")||{}).value;admin();const m=$("#sm");if(m&&v)m.value=v}};
+ else if(s.role==="licensee"&&pview==="sup"&&supTab==="rpt"&&rpView!=="new"){const v=($("#rp_m")||{}).value;portal(s.email);const m=$("#rp_m");if(m&&v)m.value=v}
+ else if(s.role!=="licensee"&&tab==="sup"){const e=$("#sm")||$("#rsm"),id=e&&e.id,v=e&&e.value;admin();if(id&&v){const m=$("#"+id);if(m)m.value=v}}};
 
 let pview="home",lhave=null,lform=null;
 const PI={
@@ -1661,7 +1752,7 @@ const PI={
  chat:'<path d="M8 10h48v32H26L12 54V42H8z"/><path d="M20 22h24M20 31h14"/>',
  med:'<path d="M15 6h25l12 12v40H15z"/><path d="M40 6v12h12"/><path d="M33 28v16M25 36h16"/>'};
 const ico=(k,z=64,w=2)=>`<svg viewBox="0 0 64 64" width="${z}" height="${z}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PI[k]}</svg>`;
-const PTILES=[["lic","LICENSING","cert","Details & validity"],["vio","VIOLATIONS","bank","Demerit points"],["doc","DOCUMENTS","file","Downloads"],["pro","PROFILE","user","Your account"],["sup","SUPPORT","chat","FAQs & live chat"]];
+const PTILES=[["lic","LICENSING","cert","Details & validity"],["vio","VIOLATIONS","bank","Demerit points"],["doc","DOCUMENTS","file","Downloads"],["pro","PROFILE","user","Your account"],["sup","SUPPORT","chat","FAQs, chat & reports"]];
 function dlRecord(r){try{const V=vsOf(r),t=dem(r),L=["TRANSPORTATION OFFICE - LMS PORTAL","DRIVING RECORD","","Holder: "+(r.name||"-"),"License No.: "+(r.licenseNo||"-"),"Type: "+(r.type||"-"),"Status: "+r.status,"Issued: "+(r.issued||"-"),"Expires: "+(r.expiry||"-"),"Codes: "+((r.restr||[]).join(", ")||"-"),"","Demerit points: "+t+" ("+standing(t).l+")","","Violations:",...(V.length?V.map(v=>"- "+v.date+"  "+v.title+" (+"+pts(v)+" pts)"+(v.notes?" - "+v.notes:"")):["None on record."]),"","Generated "+new Date().toLocaleString()];
  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([L.join("\n")],{type:"text/plain"}));a.download=(r.licenseNo||"record")+"-driving-record.txt";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast("Driving record downloaded")}catch{toast("Download is not supported in this viewer")}}
 /* ===== LEGAL: PRIVACY POLICY + TERMS ===== */
